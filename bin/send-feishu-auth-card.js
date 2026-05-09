@@ -1,0 +1,199 @@
+#!/usr/bin/env node
+const fs = require('fs');
+
+const openclawHome = process.env.OPENCLAW_HOME || '/home/node/.openclaw';
+const DEFAULTS = {
+  HOME: `${openclawHome}/home`,
+  XDG_DATA_HOME: `${openclawHome}/home/.local/share`,
+  XDG_RUNTIME_DIR: `${openclawHome}/runtime`,
+  XDG_STATE_HOME: `${openclawHome}/state`,
+  XDG_CONFIG_HOME: `${openclawHome}/config`,
+  XDG_CACHE_HOME: `${openclawHome}/cache`,
+};
+
+for (const [key, value] of Object.entries(DEFAULTS)) {
+  process.env[key] = process.env[key] || value;
+  fs.mkdirSync(process.env[key], { recursive: true });
+}
+
+const BASE_DIR = '/opt/opendd/lark-openapi';
+const { LarkAuthHandlerLocal } = require(`${BASE_DIR}/node_modules/@larksuiteoapi/lark-mcp/dist/auth/handler/handler-local`);
+const express = require(`${BASE_DIR}/node_modules/express`);
+
+function arg(name) {
+  const index = process.argv.indexOf(name);
+  if (index >= 0 && index + 1 < process.argv.length) return process.argv[index + 1];
+  return '';
+}
+
+function readJson(path) {
+  return JSON.parse(fs.readFileSync(path, 'utf8'));
+}
+
+function defaultTarget() {
+  const path = `${openclawHome}/credentials/feishu-default-allowFrom.json`;
+  if (!fs.existsSync(path)) return '';
+  const data = readJson(path);
+  return Array.isArray(data.allowFrom) ? data.allowFrom[0] || '' : '';
+}
+
+function domainFromConfig(feishu) {
+  return feishu.domain === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
+}
+
+async function getTenantAccessToken(domain, appId, appSecret) {
+  const response = await fetch(`${domain}/open-apis/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.code !== 0 || !data.tenant_access_token) {
+    throw new Error(`tenant_access_token failed: ${JSON.stringify(data)}`);
+  }
+  return data.tenant_access_token;
+}
+
+async function sendAuthCard({ domain, appId, appSecret, target, authUrl }) {
+  const tenantToken = await getTenantAccessToken(domain, appId, appSecret);
+  const receiveIdType = target.startsWith('oc_') ? 'chat_id' : 'open_id';
+  const card = {
+    config: { wide_screen_mode: true },
+    header: {
+      template: 'blue',
+      title: { tag: 'plain_text', content: 'OpenClaw 用户身份授权' },
+    },
+    elements: [
+      {
+        tag: 'markdown',
+        content: [
+          '请点击下方按钮完成飞书用户身份授权。',
+          '',
+          '授权后，OpenClaw 会按你的飞书权限读取知识库、文档和消息等数据。',
+          '',
+          '该链接 10 分钟内有效；过期后请重新发送授权卡片。',
+        ].join('\n'),
+      },
+      {
+        tag: 'action',
+        actions: [
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '去授权' },
+            type: 'primary',
+            url: authUrl,
+          },
+        ],
+      },
+    ],
+  };
+
+  const response = await fetch(`${domain}/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tenantToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      receive_id: target,
+      msg_type: 'interactive',
+      content: JSON.stringify(card),
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.code !== 0) {
+    throw new Error(`send card failed: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+async function main() {
+  const configPath = process.env.OPENCLAW_CONFIG || `${openclawHome}/openclaw.json`;
+  const cfg = readJson(configPath);
+  const feishu = cfg.channels && cfg.channels.feishu ? cfg.channels.feishu : {};
+  const appId = feishu.appId || process.env.FEISHU_APP_ID;
+  const appSecret = feishu.appSecret || process.env.FEISHU_APP_SECRET;
+  const target = arg('--target') || process.env.FEISHU_AUTH_TARGET || process.env.FEISHU_OWNER_OPEN_ID || defaultTarget();
+  const publicUrl = (arg('--public-url') || process.env.LARK_MCP_PUBLIC_URL || process.env.OPENCLAW_PUBLIC_URL || '').replace(/\/$/, '');
+  const host = arg('--host') || process.env.LARK_MCP_LOGIN_HOST || '0.0.0.0';
+  const port = Number(arg('--port') || process.env.LARK_MCP_LOGIN_PORT || 31888);
+  const scopeText = process.env.LARK_MCP_SCOPE || [
+    'offline_access',
+    'auth:user.id:read',
+    'contact:user.base:readonly',
+    'contact:user.basic_profile:readonly',
+    'contact:contact.base:readonly',
+    'wiki:space:retrieve',
+    'wiki:node:read',
+    'wiki:node:retrieve',
+    'space:document:retrieve',
+    'docx:document:readonly',
+    'sheets:spreadsheet.meta:read',
+    'sheets:spreadsheet:read',
+    'base:app:read',
+    'base:table:read',
+    'base:field:read',
+    'base:view:read',
+    'base:record:retrieve',
+    'search:docs:read',
+    'im:chat:read',
+    'im:chat.members:read',
+    'im:message:readonly',
+    'im:message.group_msg:get_as_user',
+    'im:message.p2p_msg:get_as_user',
+    'search:message',
+  ].join(' ');
+
+  if (!appId || !appSecret || typeof appSecret !== 'string') {
+    throw new Error('Feishu appId/appSecret not found in OpenClaw config or environment.');
+  }
+  if (!target) {
+    throw new Error('Missing target. Pass --target <open_id|chat_id> or set FEISHU_OWNER_OPEN_ID.');
+  }
+  if (!publicUrl) {
+    throw new Error('Missing public URL. Set OPENCLAW_PUBLIC_URL or LARK_MCP_PUBLIC_URL.');
+  }
+
+  process.env.LARK_MCP_PUBLIC_URL = publicUrl;
+  const domain = domainFromConfig(feishu);
+  const app = express();
+  app.set('trust proxy', 1);
+  app.use(express.json());
+
+  const authHandler = new LarkAuthHandlerLocal(app, {
+    port,
+    host,
+    domain,
+    appId,
+    appSecret,
+    scope: scopeText.split(/\s+/).filter(Boolean),
+  });
+
+  authHandler.setupRoutes();
+  const result = await authHandler.reAuthorize(undefined, true);
+  if (!result.authorizeUrl) throw new Error('Authorization URL was not generated.');
+
+  console.log(`callback=${authHandler.callbackUrl}`);
+  console.log(`target=${target}`);
+  console.log(`authorization_url=${result.authorizeUrl}`);
+
+  const sent = await sendAuthCard({
+    domain,
+    appId,
+    appSecret,
+    target,
+    authUrl: result.authorizeUrl,
+  });
+  console.log(`card_sent=${sent.data?.message_id || 'ok'}`);
+  console.log('waiting_for_authorization=10m');
+  setTimeout(() => {
+    console.log('auth_card_window_expired');
+    process.exit(0);
+  }, 11 * 60 * 1000);
+}
+
+main().catch((error) => {
+  console.error(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+});
+

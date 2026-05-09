@@ -1,0 +1,11 @@
+.git
+.github
+.env
+*.log
+*.tar
+*.tar.gz
+data
+backups
+node_modules
+.DS_Store
+
