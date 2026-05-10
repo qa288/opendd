@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
+export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/home/node/.openclaw}"
+export OPENCLAW_HOME="${OPENCLAW_HOME:-${OPENCLAW_STATE_DIR}}"
 if [[ -z "${HOME:-}" || "${HOME}" == "/home/node" ]]; then
-  export HOME="${OPENCLAW_HOME}/home"
+  export HOME="${OPENCLAW_STATE_DIR}/home"
 fi
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-${OPENCLAW_HOME}/runtime}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-${OPENCLAW_HOME}/home/.local/share}"
-export XDG_STATE_HOME="${XDG_STATE_HOME:-${OPENCLAW_HOME}/state}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${OPENCLAW_HOME}/config}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${OPENCLAW_HOME}/cache}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-${OPENCLAW_STATE_DIR}/runtime}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-${OPENCLAW_STATE_DIR}/home/.local/share}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-${OPENCLAW_STATE_DIR}/state}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${OPENCLAW_STATE_DIR}/config}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${OPENCLAW_STATE_DIR}/cache}"
 
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR/keyring" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$HOME/.local/share/keyrings"
 chmod 700 "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR/keyring" "$XDG_DATA_HOME" "$HOME/.local/share/keyrings"
@@ -39,4 +40,3 @@ if command -v gnome-keyring-daemon >/dev/null 2>&1; then
 fi
 
 exec "$@"
-

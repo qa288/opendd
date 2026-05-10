@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 
-const openclawHome = process.env.OPENCLAW_HOME || '/home/node/.openclaw';
+const openclawHome = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || '/home/node/.openclaw';
 const DEFAULTS = {
   HOME: `${openclawHome}/home`,
   XDG_DATA_HOME: `${openclawHome}/home/.local/share`,
@@ -108,7 +108,7 @@ async function sendAuthCard({ domain, appId, appSecret, target, authUrl }) {
 }
 
 async function main() {
-  const configPath = process.env.OPENCLAW_CONFIG || `${openclawHome}/openclaw.json`;
+  const configPath = process.env.OPENCLAW_CONFIG || process.env.OPENCLAW_CONFIG_PATH || `${openclawHome}/openclaw.json`;
   const cfg = readJson(configPath);
   const feishu = cfg.channels && cfg.channels.feishu ? cfg.channels.feishu : {};
   const appId = feishu.appId || process.env.FEISHU_APP_ID;
@@ -196,4 +196,3 @@ main().catch((error) => {
   console.error(error && error.stack ? error.stack : String(error));
   process.exit(1);
 });
-

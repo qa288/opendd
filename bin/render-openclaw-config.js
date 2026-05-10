@@ -2,8 +2,8 @@
 const fs = require('fs');
 const crypto = require('crypto');
 
-const home = process.env.OPENCLAW_HOME || '/home/node/.openclaw';
-const configPath = process.env.OPENCLAW_CONFIG || `${home}/openclaw.json`;
+const home = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || '/home/node/.openclaw';
+const configPath = process.env.OPENCLAW_CONFIG || process.env.OPENCLAW_CONFIG_PATH || `${home}/openclaw.json`;
 const publicUrl = (process.env.OPENCLAW_PUBLIC_URL || process.env.LARK_MCP_PUBLIC_URL || '').replace(/\/$/, '');
 const ownerOpenId = process.env.FEISHU_OWNER_OPEN_ID || '';
 const modelProvider = process.env.OPENCLAW_MODEL_PROVIDER || 'bailian-coding-plan';
@@ -250,15 +250,10 @@ const config = {
   },
   update: {
     checkOnStart: false,
-  },
-  meta: {
-    renderedBy: 'opendd-image',
-    renderedAt: new Date().toISOString(),
-  },
+  }
 };
 
 fs.mkdirSync(home, { recursive: true });
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 console.log(`wrote ${configPath}`);
 console.log(`gateway token: ${gatewayToken}`);
-

@@ -9,7 +9,9 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       OPENCLAW_PUBLIC_URL: https://${TENANT_DOMAIN}
       LARK_MCP_PUBLIC_URL: https://${TENANT_DOMAIN}
-      OPENCLAW_HOME: /home/node/.openclaw
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
       OPENCLAW_PORT: "18789"
       LARK_MCP_LOGIN_HOST: 0.0.0.0
       LARK_MCP_LOGIN_PORT: "31888"
@@ -24,4 +26,3 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
-
