@@ -77,6 +77,9 @@ Required values:
 
 - `OPENCLAW_MODEL_API_KEY`
 - `DASHSCOPE_API_KEY`
+- `OPENCLAW_EMBEDDING_PROVIDER`
+- `OPENCLAW_EMBEDDING_MODEL`
+- `OPENCLAW_EMBEDDING_BASE_URL`
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 - `FEISHU_OWNER_OPEN_ID`
@@ -94,6 +97,19 @@ Feishu OAuth redirect URL for this tenant:
 https://user001.ope.tyos.cc/callback
 ```
 
+## 1Panel provisioning
+
+For 1Panel-managed deployments, use the provisioning script:
+
+```bash
+python3 scripts/provision_openclaw_instance.py --interactive --panel
+```
+
+The script creates an isolated Docker Compose instance, writes clean per-user
+configuration, can register the app/agent in 1Panel, and can create reverse
+proxy files for the domain. See `docs/provision-openclaw.md` for the full
+operator flow.
+
 ## Send Feishu authorization card
 
 After the container starts:
@@ -104,6 +120,19 @@ docker logs -f openclaw-user001
 ```
 
 If `OPENDD_SEND_AUTH_CARD_ON_START=1` is set and no user token exists yet, the container sends the authorization card automatically on first start.
+
+For the recommended first-user flow, set:
+
+```text
+FEISHU_AUTH_TARGET_MODE=first_sender
+OPENDD_PAIRING_AUTH_WATCHER=1
+FEISHU_DM_POLICY=pairing
+```
+
+Then the user only needs to send a first direct message to the bot, or mention
+the bot in a group. OpenClaw records the pairing request, and
+`feishu-pairing-auth-watcher.js` sends the OAuth authorization card to that
+first sender. If a user token already exists, the watcher does nothing.
 
 ## Backup
 
@@ -125,4 +154,3 @@ If the public domain changes after restore, update:
 - `LARK_MCP_PUBLIC_URL`
 - Feishu OAuth redirect URL
 - reverse proxy rules
-

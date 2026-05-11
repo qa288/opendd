@@ -31,6 +31,7 @@ RUN npm config set registry "${NPM_REGISTRY}" \
 COPY --chown=node:node bin/ /opt/opendd/bin/
 RUN chmod +x /opt/opendd/bin/*.sh /opt/opendd/bin/*.js \
   && ln -sf /opt/opendd/bin/send-feishu-auth-card.js /usr/local/bin/opendd-send-feishu-auth-card \
+  && ln -sf /opt/opendd/bin/feishu-pairing-auth-watcher.js /usr/local/bin/opendd-feishu-pairing-auth-watcher \
   && ln -sf /opt/opendd/bin/render-openclaw-config.js /usr/local/bin/opendd-render-config \
   && chown -R node:node /opt/opendd /home/node/.openclaw
 

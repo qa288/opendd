@@ -6,10 +6,18 @@ const home = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || '/ho
 const configPath = process.env.OPENCLAW_CONFIG || process.env.OPENCLAW_CONFIG_PATH || `${home}/openclaw.json`;
 const publicUrl = (process.env.OPENCLAW_PUBLIC_URL || process.env.LARK_MCP_PUBLIC_URL || '').replace(/\/$/, '');
 const ownerOpenId = process.env.FEISHU_OWNER_OPEN_ID || '';
+const authTargetMode = process.env.FEISHU_AUTH_TARGET_MODE || 'fixed';
+const defaultDmPolicy = authTargetMode === 'fixed' ? 'allowlist' : 'pairing';
 const modelProvider = process.env.OPENCLAW_MODEL_PROVIDER || 'bailian-coding-plan';
 const modelId = process.env.OPENCLAW_MODEL_ID || 'qwen3.6-plus';
 const modelApiKey = process.env.OPENCLAW_MODEL_API_KEY || process.env.BAILIAN_CODING_API_KEY || '';
 const modelBaseUrl = process.env.OPENCLAW_MODEL_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';
+const embeddingProvider = process.env.OPENCLAW_EMBEDDING_PROVIDER || 'openai';
+const embeddingModel = process.env.OPENCLAW_EMBEDDING_MODEL || 'text-embedding-v4';
+const embeddingBaseUrl = process.env.OPENCLAW_EMBEDDING_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const embeddingApiKeyRef = process.env.OPENCLAW_EMBEDDING_API_KEY
+  ? '${OPENCLAW_EMBEDDING_API_KEY}'
+  : '${DASHSCOPE_API_KEY}';
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || crypto.randomBytes(24).toString('base64url');
 const feishuEnabled = String(process.env.FEISHU_ENABLED || '').toLowerCase() === 'true'
   || Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
@@ -57,13 +65,13 @@ const config = {
       models: Object.fromEntries(modelDefinitions.map((model) => [`${modelProvider}/${model.id}`, {}])),
       memorySearch: {
         enabled: true,
-        provider: 'openai',
-        model: process.env.OPENCLAW_EMBEDDING_MODEL || 'text-embedding-v4',
+        provider: embeddingProvider,
+        model: embeddingModel,
         fallback: 'none',
         sources: ['memory'],
         remote: {
-          apiKey: '${DASHSCOPE_API_KEY}',
-          baseUrl: process.env.OPENCLAW_EMBEDDING_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          apiKey: embeddingApiKeyRef,
+          baseUrl: embeddingBaseUrl,
           batch: {
             enabled: false,
             concurrency: 1,
@@ -109,7 +117,7 @@ const config = {
       appId: process.env.FEISHU_APP_ID || '',
       appSecret: process.env.FEISHU_APP_SECRET || '',
       connectionMode: 'websocket',
-      dmPolicy: process.env.FEISHU_DM_POLICY || 'allowlist',
+      dmPolicy: process.env.FEISHU_DM_POLICY || defaultDmPolicy,
       allowFrom: ownerOpenId ? [ownerOpenId] : [],
       groupPolicy: process.env.FEISHU_GROUP_POLICY || 'open',
       groupSenderAllowFrom: ownerOpenId && process.env.FEISHU_GROUP_OWNER_ONLY !== '0' ? [ownerOpenId] : [],

@@ -56,4 +56,10 @@ if [[ "${OPENDD_SEND_AUTH_CARD_ON_START:-0}" == "1" ]]; then
   fi
 fi
 
+if [[ "${OPENDD_PAIRING_AUTH_WATCHER:-0}" == "1" || "${FEISHU_AUTH_TARGET_MODE:-fixed}" != "fixed" ]]; then
+  mkdir -p "${OPENCLAW_STATE_DIR}/logs"
+  nohup node /opt/opendd/bin/feishu-pairing-auth-watcher.js \
+    >"${OPENCLAW_STATE_DIR}/logs/feishu-pairing-auth-watcher.log" 2>&1 &
+fi
+
 exec /usr/local/bin/docker-entrypoint.sh "$@"

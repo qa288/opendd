@@ -1,0 +1,183 @@
+# OpenClaw Instance Provisioning
+
+This document describes the operator flow for creating one isolated OpenClaw
+container per user.
+
+The provisioning script creates a clean instance. It can inherit model and
+embedding defaults from an existing template instance, but it does not copy
+OAuth tokens, memories, vector stores, chat history, logs, or workspace files.
+
+## Server Script
+
+```bash
+provision-openclaw --interactive --panel
+```
+
+Equivalent direct path:
+
+```bash
+python3 scripts/provision_openclaw_instance.py --interactive --panel
+```
+
+Use `--direct` instead of `--panel` when you only want Docker Compose and do not
+want to register the instance in 1Panel.
+
+## Required Inputs
+
+- Instance name, for example `user03`
+- Public domain, for example `user03.example.com`
+- Feishu App ID
+- Feishu App Secret
+- Optional Feishu authorization target chat ID
+- Optional owner open ID for DM allowlist mode
+- Authorization target mode, default `first_sender`
+- Optional embedding provider, model, base URL, and API key override
+
+The script auto-generates the OpenClaw gateway token unless `--gateway-token` is
+provided.
+
+## Embedding Configuration
+
+Each instance should have explicit embedding defaults. If no override is
+provided, the provisioning script inherits them from the template instance.
+
+Default DashScope/Qwen-compatible values:
+
+```text
+OPENCLAW_EMBEDDING_PROVIDER=openai
+OPENCLAW_EMBEDDING_MODEL=text-embedding-v4
+OPENCLAW_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+```
+
+`OPENCLAW_EMBEDDING_API_KEY` can be set when the embedding provider uses a
+separate key. If it is empty, the image falls back to `DASHSCOPE_API_KEY`.
+
+## Feishu Open Platform
+
+Before sending the authorization card, add this redirect URL in the Feishu app:
+
+```text
+https://<domain>/callback
+```
+
+For example:
+
+```text
+https://user03.example.com/callback
+```
+
+The default event callback mode is Feishu long connection. The script does not
+require a public event callback URL for message receiving.
+
+## Authorization Target Modes
+
+Recommended default:
+
+```text
+FEISHU_AUTH_TARGET_MODE=first_sender
+OPENDD_PAIRING_AUTH_WATCHER=1
+FEISHU_DM_POLICY=pairing
+```
+
+In this mode, the operator does not need to know the user's `open_id` or target
+`chat_id` before deployment. The user sends the bot a direct message, or
+mentions it in a group. OpenClaw records the pairing request, and the watcher
+sends the OAuth authorization card to the first sender.
+
+Manual mode:
+
+```text
+FEISHU_AUTH_TARGET_MODE=fixed
+FEISHU_AUTH_TARGET=<open_id or chat_id>
+```
+
+Use this only when the operator already knows exactly where the authorization
+card should be sent.
+
+## 1Panel Mode
+
+Panel mode creates the instance under:
+
+```text
+/opt/1panel/apps/openclaw/<instance-name>
+```
+
+It writes:
+
+- `.env`
+- `docker-compose.yml`
+- `data/conf/openclaw.json`
+- clean `data/workspace`
+
+With `--register-panel`, the script inserts 1Panel app and agent records.
+
+With `--register-website`, it also creates a 1Panel website record and writes
+OpenResty reverse proxy files:
+
+```text
+/opt/1panel/www/conf.d/<domain>.conf
+/opt/1panel/www/sites/<domain>/proxy/root.conf
+/opt/1panel/www/sites/<domain>/proxy/feishu-callback.conf
+/opt/1panel/www/sites/<domain>/proxy/feishu-authorize.conf
+```
+
+Reverse proxy routes:
+
+```text
+/          -> http://127.0.0.1:<http-port>
+/callback  -> http://127.0.0.1:<oauth-port>
+/authorize -> http://127.0.0.1:<oauth-port>
+```
+
+SSL should still be requested or bound in 1Panel so certificate renewal remains
+visible and manageable in the panel.
+
+## Data Isolation
+
+Each user gets an independent directory:
+
+```text
+/opt/1panel/apps/openclaw/<instance-name>/data
+```
+
+Back up this directory to preserve that user's:
+
+- OpenClaw config
+- memory data
+- vector data
+- OAuth/session files
+- workspace files
+- logs
+
+To restore on another server, deploy the same image, mount the saved data
+directory, and keep the domain/Feishu redirect URL consistent or reauthorize.
+
+## Example
+
+```bash
+provision-openclaw \
+  --panel \
+  --register-panel \
+  --register-website \
+  --template ql1 \
+  --name user03 \
+  --domain user03.example.com \
+  --feishu-app-id cli_xxx \
+  --feishu-app-secret '***' \
+  --auth-target-mode first_sender \
+  --embedding-provider openai \
+  --embedding-model text-embedding-v4 \
+  --embedding-base-url https://dashscope.aliyuncs.com/compatible-mode/v1
+```
+
+After HTTPS is available and the Feishu redirect URL is configured, send the
+authorization card:
+
+```bash
+provision-openclaw \
+  --send-auth-card-only \
+  --panel \
+  --name user03 \
+  --domain user03.example.com \
+  --auth-chat-id oc_xxx
+```
