@@ -20,6 +20,18 @@ const BASE_DIR = '/opt/opendd/lark-openapi';
 const { LarkAuthHandlerLocal } = require(`${BASE_DIR}/node_modules/@larksuiteoapi/lark-mcp/dist/auth/handler/handler-local`);
 const express = require(`${BASE_DIR}/node_modules/express`);
 
+class PublicLarkAuthHandlerLocal extends LarkAuthHandlerLocal {
+  get callbackUrl() {
+    const publicUrl = String(this.options && this.options.publicUrl ? this.options.publicUrl : '').replace(/\/$/, '');
+    return publicUrl ? `${publicUrl}/callback` : super.callbackUrl;
+  }
+
+  get issuerUrl() {
+    const publicUrl = String(this.options && this.options.publicUrl ? this.options.publicUrl : '').replace(/\/$/, '');
+    return publicUrl || super.issuerUrl;
+  }
+}
+
 function arg(name) {
   const index = process.argv.indexOf(name);
   if (index >= 0 && index + 1 < process.argv.length) return process.argv[index + 1];
@@ -259,22 +271,26 @@ async function main() {
   app.set('trust proxy', 1);
   app.use(express.json());
 
-  const authHandler = new LarkAuthHandlerLocal(app, {
+  const authHandler = new PublicLarkAuthHandlerLocal(app, {
     port,
     host,
     domain,
     appId,
     appSecret,
+    publicUrl,
     scope: scopeText.split(/\s+/).filter(Boolean),
   });
 
   authHandler.setupRoutes();
   const result = await authHandler.reAuthorize(undefined, true);
   if (!result.authorizeUrl) throw new Error('Authorization URL was not generated.');
+  const authorizeUrl = new URL(result.authorizeUrl);
+  authorizeUrl.protocol = new URL(publicUrl).protocol;
+  authorizeUrl.host = new URL(publicUrl).host;
 
   console.log(`callback=${authHandler.callbackUrl}`);
   console.log(`target=${target}`);
-  console.log(`authorization_url=${result.authorizeUrl}`);
+  console.log(`authorization_url=${authorizeUrl.toString()}`);
 
   const sender = mode === 'guided' ? sendGuidedAuthCard : sendAuthCard;
   const sent = await sender({
@@ -283,7 +299,7 @@ async function main() {
     appSecret,
     target,
     publicUrl,
-    authUrl: result.authorizeUrl,
+    authUrl: authorizeUrl.toString(),
   });
   console.log(`card_sent=${sent.data?.message_id || 'ok'}`);
   console.log('waiting_for_authorization=10m');
