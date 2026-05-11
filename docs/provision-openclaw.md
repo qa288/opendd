@@ -5,7 +5,13 @@ container per user.
 
 The provisioning script creates a clean instance. It can inherit model and
 embedding defaults from an existing template instance, but it does not copy
-OAuth tokens, memories, vector stores, chat history, logs, or workspace files.
+OAuth tokens, memories, vector stores, chat history, logs, workspace files, or
+the template `openclaw.json`.
+
+The tenant's `.env` is the source of truth. The container renders
+`data/conf/openclaw.json` from that environment on first start. This avoids
+stale domains, plugin state, or old channel settings leaking from another
+tenant.
 
 ## Server Script
 
@@ -126,8 +132,13 @@ It writes:
 
 - `.env`
 - `docker-compose.yml`
-- `data/conf/openclaw.json`
+- `tenant.json`
 - clean `data/workspace`
+
+`tenant.json` is a non-secret manifest with the instance name, domain, ports,
+container name, model IDs, embedding model, and 1Panel IDs. It is intended for
+operations, checks, and future migration scripts. Secrets stay in `.env` and
+OpenClaw's own data files.
 
 With `--register-panel`, the script inserts 1Panel app and agent records.
 
@@ -150,7 +161,35 @@ Reverse proxy routes:
 ```
 
 SSL should still be requested or bound in 1Panel so certificate renewal remains
-visible and manageable in the panel.
+visible and manageable in the panel. Use DNS account validation when available;
+for example, the Tencent Cloud DNS account in 1Panel can issue certificates
+without relying on public HTTP access to `/.well-known/acme-challenge`.
+
+Recommended certificate flow:
+
+1. Create the website/reverse proxy with this script.
+2. In 1Panel SSL, apply a certificate with validation method `DNS account`.
+3. Select the Tencent Cloud DNS account.
+4. Bind the issued certificate to the tenant website.
+5. Run the check script and confirm the certificate record is `ready` and
+   public HTTPS returns `HTTP/2 200` or `HTTP/1.1 200`.
+
+## Check Script
+
+After deploying, validate the instance without changing it:
+
+```bash
+python3 scripts/check_openclaw_instance.py --name user03 --domain user03.example.com
+```
+
+The checker reports:
+
+- Docker container status and health.
+- Recent model and Feishu WebSocket readiness log lines.
+- Generated `openclaw.json` domain/model/channel sanity.
+- 1Panel website record.
+- 1Panel certificate record and latest error message.
+- Public HTTP/HTTPS health probes.
 
 ## Data Isolation
 

@@ -3,9 +3,11 @@
 Provision an isolated OpenClaw instance.
 
 This script is intended to run on the server that hosts Docker and, optionally,
-1Panel. It creates a clean per-user instance directory, writes a compose file and
-sanitized config, starts the container, and can register the instance in 1Panel's
-agent/app list for visibility.
+1Panel. It creates a clean per-user instance directory, writes env/compose and
+manifest files, starts the container, and can register the instance in 1Panel's
+agent/app list for visibility. The OpenClaw config is rendered by the container
+on first start from the environment, which keeps stale template domains or
+channel state from leaking into new tenants.
 
 It deliberately does not copy another user's data directory. Model defaults can
 be inherited from a template instance, but OAuth tokens, memories, vector stores,
@@ -15,7 +17,6 @@ logs, and chat history are left empty for the new instance.
 from __future__ import annotations
 
 import argparse
-import copy
 import getpass
 import json
 import os
@@ -126,171 +127,12 @@ def next_free_port(start: int) -> int:
     return -1
 
 
-def read_json(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def write_json(path: Path, data: Dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def deep_set_public_url(config: Dict[str, Any], domain: str) -> None:
-    public_url = f"https://{domain}"
-    config.pop("publicUrl", None)
-    config.pop("openclawPublicUrl", None)
-    config.pop("feishu", None)
-
-    mcp = config.get("mcp")
-    servers = mcp.get("servers") if isinstance(mcp, dict) else None
-    if isinstance(servers, dict):
-        for server in servers.values():
-            if not isinstance(server, dict):
-                continue
-            env = server.setdefault("env", {})
-            if isinstance(env, dict):
-                env["OPENCLAW_PUBLIC_URL"] = public_url
-                env["LARK_MCP_PUBLIC_URL"] = public_url
-                env.setdefault("LARK_MCP_TOOLS", "preset.default")
-
-
-def apply_gateway_config(config: Dict[str, Any], domain: str, env: Dict[str, str]) -> None:
-    gateway = config.setdefault("gateway", {})
-    if not isinstance(gateway, dict):
-        gateway = {}
-        config["gateway"] = gateway
-
-    gateway["mode"] = gateway.get("mode") or "local"
-    gateway["bind"] = gateway.get("bind") or "lan"
-    gateway["port"] = int(gateway.get("port") or CONTAINER_HTTP_PORT)
-
-    auth = gateway.setdefault("auth", {})
-    if not isinstance(auth, dict):
-        auth = {}
-        gateway["auth"] = auth
-    auth["mode"] = "token"
-    auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
-
-    control_ui = gateway.setdefault("controlUi", {})
-    if not isinstance(control_ui, dict):
-        control_ui = {}
-        gateway["controlUi"] = control_ui
-
-    origins = [
-        "http://127.0.0.1:18789",
-        "http://localhost:18789",
-        f"https://{domain}",
-    ]
-    for item in (env.get("OPENCLAW_ALLOWED_ORIGINS") or "").split(","):
-        item = item.strip()
-        if item and item not in origins:
-            origins.append(item)
-    control_ui["allowedOrigins"] = origins
-    control_ui["dangerouslyDisableDeviceAuth"] = True
-
-    trusted = gateway.get("trustedProxies")
-    if not isinstance(trusted, list) or not trusted:
-        gateway["trustedProxies"] = ["127.0.0.1/32"]
-
-
-def apply_embedding_config(config: Dict[str, Any], env: Dict[str, str]) -> None:
-    agents = config.setdefault("agents", {})
-    if not isinstance(agents, dict):
-        return
-    defaults = agents.setdefault("defaults", {})
-    if not isinstance(defaults, dict):
-        return
-    memory_search = defaults.setdefault("memorySearch", {})
-    if not isinstance(memory_search, dict):
-        return
-
-    memory_search["enabled"] = True
-    memory_search["provider"] = env.get("OPENCLAW_EMBEDDING_PROVIDER") or memory_search.get("provider") or "openai"
-    memory_search["model"] = env.get("OPENCLAW_EMBEDDING_MODEL") or memory_search.get("model") or "text-embedding-v4"
-
-    remote = memory_search.setdefault("remote", {})
-    if not isinstance(remote, dict):
-        remote = {}
-        memory_search["remote"] = remote
-
-    remote["baseUrl"] = (
-        env.get("OPENCLAW_EMBEDDING_BASE_URL")
-        or remote.get("baseUrl")
-        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    )
-    if env.get("OPENCLAW_EMBEDDING_API_KEY"):
-        remote["apiKey"] = "${OPENCLAW_EMBEDDING_API_KEY}"
-    elif not remote.get("apiKey"):
-        remote["apiKey"] = "${DASHSCOPE_API_KEY}"
-
-
-def sanitize_config(
-    template_config: Dict[str, Any],
-    domain: str,
-    feishu_app_id: str,
-    feishu_app_secret: str,
-    auth_chat_id: str,
-    owner_open_id: str,
-    auth_target_mode: str,
-    env: Dict[str, str],
-) -> Dict[str, Any]:
-    config = copy.deepcopy(template_config)
-    deep_set_public_url(config, domain)
-    apply_gateway_config(config, domain, env)
-    apply_embedding_config(config, env)
-
-    channels = config.setdefault("channels", {})
-    if not isinstance(channels, dict):
-        channels = {}
-        config["channels"] = channels
-
-    feishu = channels.setdefault("feishu", {})
-    if not isinstance(feishu, dict):
-        feishu = {}
-        channels["feishu"] = feishu
-
-    feishu.update(
-        {
-            "enabled": True,
-            "domain": "feishu",
-            "appId": feishu_app_id,
-            "appSecret": feishu_app_secret,
-            "connectionMode": "websocket",
-            "dmPolicy": env.get("FEISHU_DM_POLICY") or ("allowlist" if owner_open_id else "pairing"),
-            "groupPolicy": "open",
-            "allowFrom": [owner_open_id] if owner_open_id else [],
-            "groupSenderAllowFrom": [owner_open_id] if owner_open_id and env.get("FEISHU_GROUP_OWNER_ONLY") != "0" else [],
-            "requireMention": True,
-            "groupSessionScope": "group_topic",
-            "replyInThread": "enabled",
-            "reactionNotifications": "own",
-            "resolveSenderNames": True,
-            "streaming": True,
-            "typingIndicator": True,
-            "renderMode": "auto",
-            "webhookPath": "/feishu/events",
-        }
-    )
-
-    # Avoid carrying identity/session material inside config if future versions
-    # add those fields. The mounted data directory starts clean as well.
-    for key in [
-        "accessToken",
-        "refreshToken",
-        "userAccessToken",
-        "userRefreshToken",
-        "oauth",
-        "session",
-        "sessions",
-        "memory",
-        "memories",
-        "history",
-        "vectorStore",
-    ]:
-        config.pop(key, None)
-
-    return config
+def utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def compose_yaml(service_name: str, container_name: str, image: str) -> str:
@@ -369,7 +211,86 @@ def copy_model_defaults(template_env: Dict[str, str]) -> Dict[str, str]:
     return {key: template_env[key] for key in keys if template_env.get(key)}
 
 
-def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int]:
+def tenant_manifest(
+    args: argparse.Namespace,
+    instance_dir: Path,
+    container_name: str,
+    http_port: int,
+    oauth_port: int,
+    env: Dict[str, str],
+    app_install_id: int = 0,
+    website_id: int = 0,
+) -> Dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "name": args.name,
+        "domain": args.domain,
+        "publicUrl": f"https://{args.domain}",
+        "createdAt": utc_now(),
+        "mode": "panel" if args.panel else "direct",
+        "image": args.image,
+        "containerName": container_name,
+        "paths": {
+            "instance": str(instance_dir),
+            "env": str(instance_dir / ".env"),
+            "compose": str(instance_dir / "docker-compose.yml"),
+            "data": str(instance_dir / "data"),
+            "config": str(instance_dir / "data/conf/openclaw.json"),
+            "workspace": str(instance_dir / "data/workspace"),
+        },
+        "ports": {
+            "http": http_port,
+            "oauth": oauth_port,
+            "containerHttp": CONTAINER_HTTP_PORT,
+            "containerOauth": CONTAINER_OAUTH_PORT,
+        },
+        "panel": {
+            "appInstallId": app_install_id,
+            "websiteId": website_id,
+        },
+        "feishu": {
+            "appId": args.feishu_app_id,
+            "domain": env.get("FEISHU_DOMAIN", "feishu"),
+            "authTargetMode": args.auth_target_mode,
+            "authCardMode": env.get("FEISHU_AUTH_CARD_MODE", "guided"),
+            "ownerOpenIdConfigured": bool(args.owner_open_id),
+        },
+        "model": {
+            "provider": env.get("OPENCLAW_MODEL_PROVIDER") or env.get("PROVIDER", ""),
+            "id": env.get("OPENCLAW_MODEL_ID") or env.get("MODEL", ""),
+            "api": env.get("OPENCLAW_MODEL_API") or env.get("API_TYPE", ""),
+            "baseUrl": env.get("OPENCLAW_MODEL_BASE_URL") or env.get("BASE_URL", ""),
+        },
+        "embedding": {
+            "provider": env.get("OPENCLAW_EMBEDDING_PROVIDER", ""),
+            "model": env.get("OPENCLAW_EMBEDDING_MODEL", ""),
+            "baseUrl": env.get("OPENCLAW_EMBEDDING_BASE_URL", ""),
+            "hasDedicatedKey": bool(env.get("OPENCLAW_EMBEDDING_API_KEY")),
+        },
+        "config": {
+            "source": "container-entrypoint",
+            "renderPolicy": env.get("OPENDD_RENDER_CONFIG", "missing"),
+        },
+    }
+
+
+def write_tenant_manifest(
+    args: argparse.Namespace,
+    instance_dir: Path,
+    container_name: str,
+    http_port: int,
+    oauth_port: int,
+    env: Dict[str, str],
+    app_install_id: int = 0,
+    website_id: int = 0,
+) -> None:
+    write_json(
+        instance_dir / "tenant.json",
+        tenant_manifest(args, instance_dir, container_name, http_port, oauth_port, env, app_install_id, website_id),
+    )
+
+
+def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int, Dict[str, str]]:
     base_dir = Path(args.base_dir or (DEFAULT_PANEL_BASE if args.panel else DEFAULT_DIRECT_BASE))
     instance_dir = base_dir / args.name
     if instance_dir.exists() and not args.force:
@@ -379,7 +300,6 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
     if not template_dir.exists() and args.template_path:
         template_dir = Path(args.template_path)
     template_env = load_env(template_dir / ".env")
-    template_config = read_json(template_dir / "data/conf/openclaw.json")
 
     http_port = int(args.http_port or next_free_port(args.http_start))
     oauth_port = int(args.oauth_port or next_free_port(args.oauth_start))
@@ -436,24 +356,13 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
         }
     )
     write_env(instance_dir / ".env", env)
-
-    config = sanitize_config(
-        template_config,
-        args.domain,
-        args.feishu_app_id,
-        args.feishu_app_secret,
-        args.auth_chat_id,
-        args.owner_open_id or "",
-        args.auth_target_mode,
-        env,
-    )
-    write_json(instance_dir / "data/conf/openclaw.json", config)
+    write_tenant_manifest(args, instance_dir, container_name, http_port, oauth_port, env)
     (instance_dir / "docker-compose.yml").write_text(
         compose_yaml(service_name, container_name, args.image),
         encoding="utf-8",
     )
 
-    return instance_dir, container_name, http_port, oauth_port
+    return instance_dir, container_name, http_port, oauth_port, env
 
 
 def sqlite_columns(cur: sqlite3.Cursor, table: str) -> list[str]:
@@ -657,7 +566,7 @@ def write_openresty_site(args: argparse.Namespace, http_port: int, oauth_port: i
     run(["docker", "exec", "1Panel-openresty-cLtk", "nginx", "-s", "reload"], check=False)
 
 
-def panel_register_website(args: argparse.Namespace, app_install_id: int, http_port: int) -> None:
+def panel_register_website(args: argparse.Namespace, app_install_id: int, http_port: int) -> int:
     db_path = Path(args.panel_db)
     if not db_path.exists():
         die(f"1Panel database not found: {db_path}")
@@ -716,6 +625,7 @@ def panel_register_website(args: argparse.Namespace, app_install_id: int, http_p
             (website_id, app_install_id),
         )
         conn.commit()
+        return website_id
     finally:
         conn.close()
 
@@ -856,9 +766,10 @@ def main() -> None:
     if shutil.which("docker") is None:
         die("docker is not installed or not in PATH")
 
-    instance_dir, container_name, http_port, oauth_port = create_instance_files(args)
+    instance_dir, container_name, http_port, oauth_port, env = create_instance_files(args)
 
     app_install_id = 0
+    website_id = 0
     if args.register_panel:
         app_install_id = panel_register(args, instance_dir, container_name, http_port)
 
@@ -866,7 +777,9 @@ def main() -> None:
         if not app_install_id and args.register_panel:
             die("could not resolve 1Panel app_install_id")
         write_openresty_site(args, http_port, oauth_port)
-        panel_register_website(args, app_install_id, http_port)
+        website_id = panel_register_website(args, app_install_id, http_port)
+
+    write_tenant_manifest(args, instance_dir, container_name, http_port, oauth_port, env, app_install_id, website_id)
 
     if not args.no_start:
         start_container(instance_dir)
