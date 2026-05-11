@@ -12,10 +12,11 @@ const publicUrl = (process.env.OPENCLAW_PUBLIC_URL || process.env.LARK_MCP_PUBLI
 const pollMs = Number(process.env.FEISHU_AUTH_WATCHER_POLL_MS || 15000);
 const sendScript = process.env.FEISHU_AUTH_CARD_SCRIPT || '/opt/opendd/bin/send-feishu-auth-card.js';
 const cardMode = process.env.FEISHU_AUTH_CARD_MODE || 'guided';
-const defaultCooldownMs = cardMode === 'guided' ? 30 * 60 * 1000 : 6 * 60 * 60 * 1000;
+const defaultCooldownMs = cardMode === 'guided' ? 12 * 60 * 1000 : 6 * 60 * 60 * 1000;
 const cooldownMs = Number(process.env.FEISHU_AUTH_CARD_COOLDOWN_MS || defaultCooldownMs);
 const bindFirstUser = String(process.env.FEISHU_AUTH_BIND_FIRST_USER || '1') !== '0';
 const once = process.argv.includes('--once') || process.env.FEISHU_AUTH_WATCHER_ONCE === '1';
+const cardLogPath = process.env.FEISHU_AUTH_CARD_LOG_FILE || `${openclawHome}/logs/feishu-auth-card-watcher.log`;
 
 function now() {
   return new Date().toISOString();
@@ -162,12 +163,15 @@ function sendAuthCard(target) {
     return false;
   }
 
+  fs.mkdirSync(require('path').dirname(cardLogPath), { recursive: true });
+  fs.appendFileSync(cardLogPath, `${now()} START target=${safeId(target)} mode=${cardMode} publicUrl=${publicUrl}\n`, { mode: 0o600 });
+  const logFd = fs.openSync(cardLogPath, 'a');
   const child = spawn(
     process.execPath,
     [sendScript, '--target', target, '--public-url', publicUrl, '--mode', cardMode],
     {
       detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
+      stdio: ['ignore', logFd, logFd],
       env: {
         ...process.env,
         OPENCLAW_STATE_DIR: openclawHome,
@@ -177,6 +181,9 @@ function sendAuthCard(target) {
       },
     },
   );
+  child.on('error', (error) => {
+    log(`WARN auth_card_spawn_failed target=${safeId(target)} error=${error.message}`);
+  });
   child.unref();
   return true;
 }

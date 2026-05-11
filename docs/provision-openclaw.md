@@ -126,7 +126,7 @@ FEISHU_AUTH_CARD_MODE=guided
 Set `FEISHU_AUTH_CARD_MODE=auth` only when the redirect URL has already been
 configured and the user should receive a plain authorization card.
 
-In guided mode, the watcher uses a shorter default resend interval of 30
+In guided mode, the watcher uses a shorter default resend interval of 12
 minutes because the OAuth URL embedded in the card is short-lived. Override with
 `FEISHU_AUTH_CARD_COOLDOWN_MS` when needed.
 
