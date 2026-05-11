@@ -1,5 +1,13 @@
 # OpenClaw 多用户独立容器部署方案
 
+> 当前执行版请优先阅读：
+>
+> `docs/openclaw-tenant-implementation-v2.md`
+>
+> v2 的关键变化是：`.env` 是单一事实来源，部署脚本不再复制模板
+> `openclaw.json`；容器启动时自行渲染配置；每个实例生成无密钥
+> `tenant.json`；证书默认通过 1Panel 已配置的 DNS 解析账号申请。
+
 ## 1. 目标
 
 当前目标是把 OpenClaw 做成“一人一套独立实例”的交付方式。每个用户拥有独立容器、独立数据目录、独立管理 Token、独立飞书应用、独立飞书用户授权、独立记忆库和独立聊天记录。
@@ -49,13 +57,15 @@
    - 自动分配端口。
    - 生成 `.env`。
    - 生成 `docker-compose.yml`。
-   - 生成干净的 `openclaw.json`。
-   - 继承模板模型、向量、记忆、梦境配置。
+   - 生成无密钥 `tenant.json`。
+   - 继承模板 `.env` 中的模型和向量默认值。
    - 写入新的飞书 App ID / Secret。
-   - 写入新的用户 allowlist。
    - 可注册到 1Panel 应用/智能体列表。
    - 可写入 1Panel 网站记录和 OpenResty 反代配置。
    - 可发送飞书 OAuth 授权卡片。
+
+   注意：部署脚本不再复制模板实例的 `openclaw.json`。容器首次启动时由镜像内
+   `render-openclaw-config.js` 根据 `.env` 渲染新实例配置。
 
 3. 飞书授权 keepalive
 

@@ -1,5 +1,11 @@
 # OpenClaw Instance Provisioning
 
+For the current colleague-facing implementation guide, see:
+
+```text
+docs/openclaw-tenant-implementation-v2.md
+```
+
 This document describes the operator flow for creating one isolated OpenClaw
 container per user.
 

@@ -68,7 +68,7 @@ def check_container(name: str) -> None:
     state = "OK" if "running" in detail and ("healthy" in detail or detail == "running") else "WARN"
     status("container", state, detail)
 
-    logs = run(["docker", "logs", "--since", "15m", "--tail", "260", name], timeout=20).stdout
+    logs = run(["docker", "logs", "--tail", "500", name], timeout=20).stdout
     interesting = []
     for line in logs.splitlines():
         if any(pattern in line for pattern in ["agent model:", "ws client ready", "EACCES", "failed to dispatch", "failed to start server"]):
@@ -78,7 +78,7 @@ def check_container(name: str) -> None:
             redacted = line.replace("Authorization", "Authorization<redacted>")
             print(f"LOG  {redacted[:260]}")
     else:
-        status("recent logs", "WARN", "no model/ws readiness lines found in last 15m")
+        status("readiness logs", "INFO", "no model/ws readiness lines found in latest log tail")
 
 
 def check_config(instance_dir: Path, domain: str) -> None:
@@ -103,7 +103,46 @@ def check_config(instance_dir: Path, domain: str) -> None:
     status("feishu channel config", "OK" if feishu.get("enabled") else "WARN", f"enabled={feishu.get('enabled')}")
 
 
-def check_panel(domain: str, panel_db: Path) -> None:
+def check_feishu_user_token(instance_dir: Path) -> None:
+    candidates = [
+        instance_dir / "data/conf/home/.local/share/lark-mcp-nodejs/storage.json",
+        instance_dir / "data/conf/home/.local/share/lark-mcp-nodejs/default/storage.json",
+    ]
+    for path in candidates:
+        if path.exists() and path.stat().st_size > 0:
+            status("feishu user token", "OK", str(path))
+            return
+    status("feishu user token", "WARN", "missing or empty; user OAuth may still be pending")
+
+
+def resolve_container_name(
+    name: str,
+    explicit_container_name: str,
+    manifest: Dict[str, Any],
+    panel_db: Path,
+) -> str:
+    if explicit_container_name:
+        return explicit_container_name
+    if manifest.get("containerName"):
+        return str(manifest["containerName"])
+    if panel_db.exists():
+        conn = sqlite3.connect(str(panel_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "select container_name from app_installs where name = ? order by id desc",
+                (name,),
+            ).fetchone()
+            if row and row["container_name"]:
+                container_name = str(row["container_name"])
+                status("container name", "OK", f"from 1Panel app install: {container_name}")
+                return container_name
+        finally:
+            conn.close()
+    return f"1Panel-openclaw-{name}"
+
+
+def check_panel(name: str, domain: str, container_name: str, instance_dir: Path, panel_db: Path) -> None:
     if not panel_db.exists():
         status("1Panel db", "WARN", f"not found: {panel_db}")
         return
@@ -112,6 +151,40 @@ def check_panel(domain: str, panel_db: Path) -> None:
     conn.row_factory = sqlite3.Row
     try:
         cur = conn.cursor()
+        agent = cur.execute(
+            "select id, name, status, app_install_id, website_id, config_path from agents where name = ?",
+            (name,),
+        ).fetchone()
+        expected_config_path = str(instance_dir / "data/conf/openclaw.json")
+        if agent:
+            a = dict(agent)
+            detail = (
+                f"id={a['id']} status={a['status']} app_install_id={a['app_install_id']} "
+                f"website_id={a['website_id']}"
+            )
+            state = "OK" if a.get("config_path") == expected_config_path else "WARN"
+            if state == "WARN":
+                detail += f" config_path={a.get('config_path')}"
+            status("1Panel agent record", state, detail)
+        else:
+            status("1Panel agent record", "FAIL", "missing")
+
+        app_install = cur.execute(
+            "select id, name, status, container_name, service_name, http_port from app_installs where name = ? or container_name = ? order by id desc",
+            (name, container_name),
+        ).fetchone()
+        if app_install:
+            app = dict(app_install)
+            detail = f"id={app['id']} status={app['status']} container={app['container_name']} http_port={app['http_port']}"
+            if app["container_name"] != container_name:
+                state = "WARN"
+                detail += f" expected_container={container_name}"
+            else:
+                state = "OK" if app["status"] == "Running" else "WARN"
+            status("1Panel app install", state, detail)
+        else:
+            status("1Panel app install", "FAIL", "missing")
+
         website = cur.execute(
             "select id, protocol, primary_domain, status, http_config, proxy, website_ssl_id from websites where primary_domain = ?",
             (domain,),
@@ -132,9 +205,12 @@ def check_panel(domain: str, panel_db: Path) -> None:
             status("1Panel certificate record", "WARN", "missing")
             return
         latest = dict(ssl_rows[0])
-        message = (latest.get("message") or "").replace("\n", " ")[:220]
+        raw_message = (latest.get("message") or "").replace("\n", " ")
+        message = raw_message[:220]
         detail = f"id={latest['id']} provider={latest['provider']} status={latest['status']} expire={latest['expire_date']}"
-        if message:
+        if latest["status"] == "ready" and raw_message:
+            detail += " message=<stale non-blocking>"
+        elif message:
             detail += f" message={message}"
         state = "OK" if latest["status"] == "ready" else "WARN"
         status("1Panel certificate record", state, detail)
@@ -172,12 +248,13 @@ def main() -> int:
 
     base_dir = Path(args.base_dir)
     instance_dir = Path(manifest.get("paths", {}).get("instance") or base_dir / args.name)
-    container_name = args.container_name or manifest.get("containerName") or f"1Panel-openclaw-{args.name}"
+    container_name = resolve_container_name(args.name, args.container_name, manifest, Path(args.panel_db))
 
     status("instance", "OK", f"{args.name} {domain}")
     check_container(container_name)
     check_config(instance_dir, domain)
-    check_panel(domain, Path(args.panel_db))
+    check_feishu_user_token(instance_dir)
+    check_panel(args.name, domain, container_name, instance_dir, Path(args.panel_db))
     if not args.skip_public_http:
         check_public_http(domain)
     return 0
