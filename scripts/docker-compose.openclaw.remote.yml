@@ -1,0 +1,40 @@
+networks:
+    1panel-network:
+        external: true
+services:
+    openclaw:
+        container_name: ${CONTAINER_NAME}
+        deploy:
+            resources:
+                limits:
+                    cpus: ${CPUS}
+                    memory: ${MEMORY_LIMIT}
+        environment:
+            HOME: /home/node
+            DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+            OPENCLAW_DISABLE_BONJOUR: "1"
+            TERM: xterm-256color
+        healthcheck:
+            interval: 3m
+            retries: 3
+            start_period: 15s
+            test:
+                - CMD
+                - node
+                - -e
+                - fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+            timeout: 10s
+        image: 1panel/openclaw:2026.5.7
+        init: true
+        labels:
+            createdBy: Apps
+        networks:
+            - 1panel-network
+        ports:
+            - ${HOST_IP}:${PANEL_APP_PORT_HTTP}:18789
+            - ${HOST_IP}:31888:31888
+        restart: unless-stopped
+        volumes:
+            - ./data/conf:/home/node/.openclaw
+            - ./data/workspace:/home/node/.openclaw/workspace
+            - /etc/localtime:/etc/localtime

@@ -137,12 +137,9 @@ def write_json(path: Path, data: Dict[str, Any]) -> None:
 
 def deep_set_public_url(config: Dict[str, Any], domain: str) -> None:
     public_url = f"https://{domain}"
-    config["publicUrl"] = public_url
-    config["openclawPublicUrl"] = public_url
-
-    feishu = config.setdefault("feishu", {})
-    if isinstance(feishu, dict):
-        feishu["publicUrl"] = public_url
+    config.pop("publicUrl", None)
+    config.pop("openclawPublicUrl", None)
+    config.pop("feishu", None)
 
     mcp = config.get("mcp")
     servers = mcp.get("servers") if isinstance(mcp, dict) else None
@@ -219,14 +216,19 @@ def sanitize_config(
             "appId": feishu_app_id,
             "appSecret": feishu_app_secret,
             "connectionMode": "websocket",
-            "authTargetChatId": auth_chat_id or "",
-            "authTargetMode": auth_target_mode,
             "dmPolicy": env.get("FEISHU_DM_POLICY") or ("allowlist" if owner_open_id else "pairing"),
             "groupPolicy": "open",
-            "groupOwnerOnly": True,
             "allowFrom": [owner_open_id] if owner_open_id else [],
             "groupSenderAllowFrom": [owner_open_id] if owner_open_id and env.get("FEISHU_GROUP_OWNER_ONLY") != "0" else [],
             "requireMention": True,
+            "groupSessionScope": "group_topic",
+            "replyInThread": "enabled",
+            "reactionNotifications": "own",
+            "resolveSenderNames": True,
+            "streaming": True,
+            "typingIndicator": True,
+            "renderMode": "auto",
+            "webhookPath": "/feishu/events",
         }
     )
 
@@ -413,8 +415,9 @@ def insert_row(cur: sqlite3.Cursor, table: str, values: Dict[str, Any]) -> int:
     filtered = {key: value for key, value in values.items() if key in columns}
     keys = list(filtered)
     placeholders = ",".join(["?"] * len(keys))
+    quoted_keys = ",".join([f'"{key}"' for key in keys])
     cur.execute(
-        f"INSERT INTO {table} ({','.join(keys)}) VALUES ({placeholders})",
+        f'INSERT INTO "{table}" ({quoted_keys}) VALUES ({placeholders})',
         [filtered[key] for key in keys],
     )
     return int(cur.lastrowid)
