@@ -21,6 +21,7 @@ const embeddingApiKeyRef = process.env.OPENCLAW_EMBEDDING_API_KEY
 const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || crypto.randomBytes(24).toString('base64url');
 const feishuEnabled = String(process.env.FEISHU_ENABLED || '').toLowerCase() === 'true'
   || Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
+const weixinPluginEnabled = String(process.env.OPENCLAW_WEIXIN_PLUGIN_ENABLED || '1') !== '0';
 
 function list(value) {
   return String(value || '')
@@ -181,10 +182,21 @@ const config = {
   },
   plugins: {
     bundledDiscovery: 'compat',
-    allow: ['browser', 'feishu', 'memory-core', 'active-memory'],
+    allow: [
+      'browser',
+      'feishu',
+      'memory-core',
+      'active-memory',
+      ...(weixinPluginEnabled ? ['openclaw-weixin'] : []),
+    ],
     entries: {
       browser: { enabled: true },
       feishu: { enabled: feishuEnabled, config: {} },
+      ...(weixinPluginEnabled
+        ? {
+            'openclaw-weixin': { enabled: true, config: {} },
+          }
+        : {}),
       'active-memory': {
         enabled: true,
         config: {

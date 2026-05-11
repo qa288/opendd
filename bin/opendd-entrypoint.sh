@@ -14,9 +14,77 @@ export LARK_MCP_PUBLIC_URL="${LARK_MCP_PUBLIC_URL:-${OPENCLAW_PUBLIC_URL:-}}"
 export LARK_MCP_LOGIN_HOST="${LARK_MCP_LOGIN_HOST:-0.0.0.0}"
 export LARK_MCP_LOGIN_PORT="${LARK_MCP_LOGIN_PORT:-31888}"
 
+prepare_plugin_extension() {
+  local plugin_id="$1"
+  local package_dir="$2"
+  local dependency_root="$3"
+  local destination="${OPENCLAW_STATE_DIR}/extensions/${plugin_id}"
+
+  [[ -d "${package_dir}" ]] || return 0
+
+  if [[ ! -f "${destination}/openclaw.plugin.json" || "${OPENDD_REFRESH_PLUGIN_EXTENSIONS:-0}" == "1" ]]; then
+    rm -rf "${destination}"
+    mkdir -p "$(dirname "${destination}")"
+    cp -a "${package_dir}" "${destination}"
+  fi
+
+  mkdir -p "${destination}/node_modules"
+  ln -sfn /app "${destination}/node_modules/openclaw"
+  node - "${package_dir}" "${dependency_root}" "${destination}" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const [packageDir, dependencyRoot, destination] = process.argv.slice(2);
+const packageJson = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
+const deps = Object.keys(packageJson.dependencies || {});
+for (const dep of deps) {
+  const source = path.join(dependencyRoot, dep);
+  if (!fs.existsSync(source)) continue;
+  const link = path.join(destination, 'node_modules', dep);
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.rmSync(link, { recursive: true, force: true });
+  fs.symlinkSync(source, link, 'dir');
+}
+NODE
+
+  # OpenClaw blocks plugin sources owned by the runtime user. Keep source files
+  # root-owned but world-readable so the node process can load them.
+  chown -R root:root "${destination}"
+  find "${destination}" -type d -exec chmod 755 {} +
+  find "${destination}" -type f -exec chmod 644 {} +
+}
+
+refresh_plugin_registry() {
+  [[ -f "${OPENCLAW_CONFIG_PATH}" ]] || return 0
+  mkdir -p "${OPENCLAW_STATE_DIR}/plugins"
+  OPENCLAW_HOME="${OPENCLAW_STATE_DIR}" \
+    OPENCLAW_CONFIG="${OPENCLAW_CONFIG_PATH}" \
+    OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH}" \
+    openclaw plugins registry --refresh || true
+  chown -R node:node "${OPENCLAW_STATE_DIR}/plugins" 2>/dev/null || true
+  chmod 700 "${OPENCLAW_STATE_DIR}/plugins" 2>/dev/null || true
+  chmod 600 "${OPENCLAW_STATE_DIR}/plugins/installs.json" 2>/dev/null || true
+}
+
 if [[ "$(id -u)" == "0" ]]; then
   mkdir -p "${OPENCLAW_STATE_DIR}"
   chown -R node:node "${OPENCLAW_STATE_DIR}"
+  prepare_plugin_extension \
+    "feishu" \
+    "/opt/opendd/openclaw-npm/node_modules/@openclaw/feishu" \
+    "/opt/opendd/openclaw-npm/node_modules"
+  if [[ "${OPENCLAW_WEIXIN_PLUGIN_ENABLED:-1}" != "0" ]]; then
+    prepare_plugin_extension \
+      "openclaw-weixin" \
+      "/opt/opendd/weixin-npm/node_modules/@tencent-weixin/openclaw-weixin" \
+      "/opt/opendd/weixin-npm/node_modules"
+  fi
+  if [[ ! -f "${OPENCLAW_CONFIG_PATH}" || "${OPENDD_RENDER_CONFIG:-missing}" == "always" ]]; then
+    node /opt/opendd/bin/render-openclaw-config.js
+    chown node:node "${OPENCLAW_CONFIG_PATH}" 2>/dev/null || true
+    chmod 600 "${OPENCLAW_CONFIG_PATH}" 2>/dev/null || true
+  fi
+  refresh_plugin_registry
   exec setpriv --reuid=node --regid=node --init-groups /opt/opendd/bin/opendd-entrypoint.sh "$@"
 fi
 
@@ -33,11 +101,6 @@ mkdir -p \
 
 if [[ ! -e "${OPENCLAW_STATE_DIR}/mcp/lark-openapi" ]]; then
   ln -s /opt/opendd/lark-openapi "${OPENCLAW_STATE_DIR}/mcp/lark-openapi"
-fi
-
-if [[ ! -d "${OPENCLAW_STATE_DIR}/npm/node_modules/@openclaw/feishu" ]]; then
-  mkdir -p "${OPENCLAW_STATE_DIR}/npm"
-  cp -a /opt/opendd/openclaw-npm/. "${OPENCLAW_STATE_DIR}/npm/"
 fi
 
 if [[ -n "${FEISHU_OWNER_OPEN_ID:-}" && ! -f "${OPENCLAW_STATE_DIR}/credentials/feishu-default-allowFrom.json" ]]; then
