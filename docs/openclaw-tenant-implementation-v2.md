@@ -237,7 +237,7 @@ python3 scripts/check_openclaw_instance.py --name m2 --domain m2.op.tyos.cc
 在服务器上也可以直接运行已同步的检查脚本：
 
 ```bash
-python3 /tmp/check_openclaw_instance.py --name m1 --domain m1.op.tyos.cc
+check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 ```
 
 检查项包括：

@@ -188,14 +188,22 @@ After deploying, validate the instance without changing it:
 python3 scripts/check_openclaw_instance.py --name user03 --domain user03.example.com
 ```
 
+On the current server, the same script is installed as:
+
+```bash
+check-openclaw-instance --name user03 --domain user03.example.com
+```
+
 The checker reports:
 
 - Docker container status and health.
 - Recent model and Feishu WebSocket readiness log lines.
 - Generated `openclaw.json` domain/model/channel sanity.
+- 1Panel agent and app install records.
 - 1Panel website record.
 - 1Panel certificate record and latest error message.
 - Public HTTP/HTTPS health probes.
+- Feishu user token storage status.
 
 ## Data Isolation
 
