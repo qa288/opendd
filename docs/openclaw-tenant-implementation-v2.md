@@ -253,7 +253,7 @@ check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 - 1Panel website 是否存在且 `Running`。
 - 1Panel certificate 是否 `ready`。
 - 公网 HTTPS 是否 200/301/302/401。
-- 飞书用户 token 是否已落盘。
+- 飞书用户 token 是否已落盘，文件密钥 fallback 是否存在。
 
 当前正常输出示例：
 

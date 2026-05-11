@@ -110,7 +110,18 @@ def check_feishu_user_token(instance_dir: Path) -> None:
     ]
     for path in candidates:
         if path.exists() and path.stat().st_size > 0:
-            status("feishu user token", "OK", str(path))
+            fallback_key = path.with_name("encryption-key")
+            detail = str(path)
+            if fallback_key.exists() and fallback_key.stat().st_size > 0:
+                detail += " fallback_key=present"
+            else:
+                detail += " fallback_key=absent_or_keytar"
+            status("feishu user token", "OK", detail)
+            return
+    for path in candidates:
+        fallback_key = path.with_name("encryption-key")
+        if fallback_key.exists() and fallback_key.stat().st_size > 0:
+            status("feishu user token", "WARN", f"fallback key exists but token storage is missing: {path}")
             return
     status("feishu user token", "WARN", "missing or empty; user OAuth may still be pending")
 
