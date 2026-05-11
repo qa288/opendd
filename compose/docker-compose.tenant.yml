@@ -7,9 +7,12 @@ services:
       - .env
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node/.openclaw
       OPENCLAW_PUBLIC_URL: https://${TENANT_DOMAIN}
       LARK_MCP_PUBLIC_URL: https://${TENANT_DOMAIN}
       OPENCLAW_STATE_DIR: /home/node/.openclaw
+      XDG_DATA_HOME: /home/node/.openclaw/home/.local/share
       OPENCLAW_CONFIG: /home/node/.openclaw/openclaw.json
       OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
       OPENCLAW_PORT: "18789"

@@ -234,12 +234,12 @@ https://<domain>/callback
 
 1. 运维创建实例。
 2. 运维或用户在飞书开放平台添加回调地址。
-3. 系统向用户飞书会话发送授权卡片。
-4. 用户点击授权。
+3. 系统向用户飞书会话发送引导式授权卡片，卡片里包含 App ID、回调地址和开放平台入口。
+4. 用户在飞书开放平台添加回调地址后，点击卡片里的授权按钮。
 5. lark-mcp 保存 user token 和 refresh token。
 6. 后续 OpenClaw 使用用户身份访问飞书资源。
 
-推荐的授权目标模式是 `first_sender`。在这个模式下，运维不需要提前知道用户的 `open_id` 或授权目标 `chat_id`。用户只要先私聊机器人，或在群里 @ 机器人，OpenClaw 飞书插件会写入 `feishu-pairing.json`，镜像内的 `feishu-pairing-auth-watcher.js` 会读取第一个用户并自动发送 OAuth 授权卡片。
+推荐的授权目标模式是 `first_sender`。在这个模式下，运维不需要提前知道用户的 `open_id` 或授权目标 `chat_id`。用户只要先私聊机器人，或在群里 @ 机器人，OpenClaw 飞书插件会写入 `feishu-pairing.json`，镜像内的 `feishu-pairing-auth-watcher.js` 会读取第一个用户并自动发送引导式 OAuth 授权卡片。
 
 如果已经知道固定目标，也可以使用：
 

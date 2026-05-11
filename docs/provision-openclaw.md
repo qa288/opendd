@@ -82,7 +82,23 @@ FEISHU_DM_POLICY=pairing
 In this mode, the operator does not need to know the user's `open_id` or target
 `chat_id` before deployment. The user sends the bot a direct message, or
 mentions it in a group. OpenClaw records the pairing request, and the watcher
-sends the OAuth authorization card to the first sender.
+sends a guided OAuth card to the first sender.
+
+The guided card includes:
+
+- The Feishu app ID.
+- The exact redirect URL that must be added in Feishu Open Platform.
+- A button to open the Feishu app console.
+- A button to start user OAuth after the redirect URL has been saved.
+
+Default:
+
+```text
+FEISHU_AUTH_CARD_MODE=guided
+```
+
+Set `FEISHU_AUTH_CARD_MODE=auth` only when the redirect URL has already been
+configured and the user should receive a plain authorization card.
 
 Manual mode:
 

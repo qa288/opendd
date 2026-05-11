@@ -12,6 +12,7 @@ const publicUrl = (process.env.OPENCLAW_PUBLIC_URL || process.env.LARK_MCP_PUBLI
 const pollMs = Number(process.env.FEISHU_AUTH_WATCHER_POLL_MS || 15000);
 const cooldownMs = Number(process.env.FEISHU_AUTH_CARD_COOLDOWN_MS || 6 * 60 * 60 * 1000);
 const sendScript = process.env.FEISHU_AUTH_CARD_SCRIPT || '/opt/opendd/bin/send-feishu-auth-card.js';
+const cardMode = process.env.FEISHU_AUTH_CARD_MODE || 'guided';
 const bindFirstUser = String(process.env.FEISHU_AUTH_BIND_FIRST_USER || '1') !== '0';
 const once = process.argv.includes('--once') || process.env.FEISHU_AUTH_WATCHER_ONCE === '1';
 
@@ -162,7 +163,7 @@ function sendAuthCard(target) {
 
   const child = spawn(
     process.execPath,
-    [sendScript, '--target', target, '--public-url', publicUrl],
+    [sendScript, '--target', target, '--public-url', publicUrl, '--mode', cardMode],
     {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],

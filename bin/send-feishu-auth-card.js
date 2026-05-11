@@ -41,6 +41,10 @@ function domainFromConfig(feishu) {
   return feishu.domain === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
 }
 
+function appConsoleUrl(domain) {
+  return domain.includes('larksuite.com') ? 'https://open.larksuite.com/app' : 'https://open.feishu.cn/app';
+}
+
 async function getTenantAccessToken(domain, appId, appSecret) {
   const response = await fetch(`${domain}/open-apis/auth/v3/tenant_access_token/internal`, {
     method: 'POST',
@@ -54,10 +58,30 @@ async function getTenantAccessToken(domain, appId, appSecret) {
   return data.tenant_access_token;
 }
 
-async function sendAuthCard({ domain, appId, appSecret, target, authUrl }) {
+async function sendInteractiveCard({ domain, appId, appSecret, target, card }) {
   const tenantToken = await getTenantAccessToken(domain, appId, appSecret);
   const receiveIdType = target.startsWith('oc_') ? 'chat_id' : 'open_id';
-  const card = {
+  const response = await fetch(`${domain}/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tenantToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      receive_id: target,
+      msg_type: 'interactive',
+      content: JSON.stringify(card),
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.code !== 0) {
+    throw new Error(`send card failed: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+function authCard(authUrl) {
+  return {
     config: { wide_screen_mode: true },
     header: {
       template: 'blue',
@@ -87,24 +111,82 @@ async function sendAuthCard({ domain, appId, appSecret, target, authUrl }) {
       },
     ],
   };
+}
 
-  const response = await fetch(`${domain}/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${tenantToken}`,
-      'Content-Type': 'application/json; charset=utf-8',
+function setupGuideCard({ appId, callbackUrl, consoleUrl, authUrl }) {
+  const actions = [
+    {
+      tag: 'button',
+      text: { tag: 'plain_text', content: '打开开放平台' },
+      type: 'default',
+      url: consoleUrl,
     },
-    body: JSON.stringify({
-      receive_id: target,
-      msg_type: 'interactive',
-      content: JSON.stringify(card),
+  ];
+  if (authUrl) {
+    actions.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: '配置完成后授权' },
+      type: 'primary',
+      url: authUrl,
+    });
+  }
+
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      template: 'blue',
+      title: { tag: 'plain_text', content: 'OpenClaw 飞书授权配置' },
+    },
+    elements: [
+      {
+        tag: 'markdown',
+        content: [
+          '第一次使用前，需要先在飞书开放平台配置 OAuth 重定向 URL。',
+          '',
+          `App ID：${appId}`,
+          `重定向 URL：${callbackUrl}`,
+          '',
+          '步骤：',
+          '1. 打开飞书开放平台应用列表，选择上面的 App ID 对应应用。',
+          '2. 进入「安全设置」->「重定向 URL」，添加上面的地址并保存。',
+          authUrl ? '3. 保存后回到这张卡片，点击「配置完成后授权」。' : '3. 保存后重新给机器人发一条消息，或让管理员重发授权卡片。',
+        ].join('\n'),
+      },
+      {
+        tag: 'action',
+        actions,
+      },
+    ],
+  };
+}
+
+async function sendAuthCard({ domain, appId, appSecret, target, authUrl }) {
+  return sendInteractiveCard({
+    domain,
+    appId,
+    appSecret,
+    target,
+    card: authCard(authUrl),
+  });
+}
+
+async function sendSetupGuideCard({ domain, appId, appSecret, target, publicUrl, authUrl }) {
+  return sendInteractiveCard({
+    domain,
+    appId,
+    appSecret,
+    target,
+    card: setupGuideCard({
+      appId,
+      callbackUrl: `${publicUrl}/callback`,
+      consoleUrl: appConsoleUrl(domain),
+      authUrl,
     }),
   });
-  const data = await response.json();
-  if (!response.ok || data.code !== 0) {
-    throw new Error(`send card failed: ${JSON.stringify(data)}`);
-  }
-  return data;
+}
+
+async function sendGuidedAuthCard({ domain, appId, appSecret, target, publicUrl, authUrl }) {
+  return sendSetupGuideCard({ domain, appId, appSecret, target, publicUrl, authUrl });
 }
 
 async function main() {
@@ -115,6 +197,7 @@ async function main() {
   const appSecret = feishu.appSecret || process.env.FEISHU_APP_SECRET;
   const target = arg('--target') || process.env.FEISHU_AUTH_TARGET || process.env.FEISHU_OWNER_OPEN_ID || defaultTarget();
   const publicUrl = (arg('--public-url') || process.env.LARK_MCP_PUBLIC_URL || process.env.OPENCLAW_PUBLIC_URL || '').replace(/\/$/, '');
+  const mode = arg('--mode') || process.env.FEISHU_AUTH_CARD_MODE || 'auth';
   const host = arg('--host') || process.env.LARK_MCP_LOGIN_HOST || '0.0.0.0';
   const port = Number(arg('--port') || process.env.LARK_MCP_LOGIN_PORT || 31888);
   const scopeText = process.env.LARK_MCP_SCOPE || [
@@ -156,6 +239,21 @@ async function main() {
 
   process.env.LARK_MCP_PUBLIC_URL = publicUrl;
   const domain = domainFromConfig(feishu);
+  if (mode === 'setup') {
+    const sent = await sendSetupGuideCard({
+      domain,
+      appId,
+      appSecret,
+      target,
+      publicUrl,
+      authUrl: '',
+    });
+    console.log(`callback=${publicUrl}/callback`);
+    console.log(`target=${target}`);
+    console.log(`setup_card_sent=${sent.data?.message_id || 'ok'}`);
+    return;
+  }
+
   const app = express();
   app.set('trust proxy', 1);
   app.use(express.json());
@@ -177,11 +275,13 @@ async function main() {
   console.log(`target=${target}`);
   console.log(`authorization_url=${result.authorizeUrl}`);
 
-  const sent = await sendAuthCard({
+  const sender = mode === 'guided' ? sendGuidedAuthCard : sendAuthCard;
+  const sent = await sender({
     domain,
     appId,
     appSecret,
     target,
+    publicUrl,
     authUrl: result.authorizeUrl,
   });
   console.log(`card_sent=${sent.data?.message_id || 'ok'}`);

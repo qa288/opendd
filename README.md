@@ -126,13 +126,16 @@ For the recommended first-user flow, set:
 ```text
 FEISHU_AUTH_TARGET_MODE=first_sender
 OPENDD_PAIRING_AUTH_WATCHER=1
+FEISHU_AUTH_CARD_MODE=guided
 FEISHU_DM_POLICY=pairing
 ```
 
 Then the user only needs to send a first direct message to the bot, or mention
 the bot in a group. OpenClaw records the pairing request, and
-`feishu-pairing-auth-watcher.js` sends the OAuth authorization card to that
-first sender. If a user token already exists, the watcher does nothing.
+`feishu-pairing-auth-watcher.js` sends a guided OAuth card to that first
+sender. The card shows the app ID, the exact redirect URL to add in Feishu Open
+Platform, and the authorization button. If a user token already exists, the
+watcher does nothing.
 
 ## Backup
 

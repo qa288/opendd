@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export HOME="${HOME:-/home/node}"
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/home/node/.openclaw}"
+if [[ "${HOME:-}" == "" || "${HOME:-}" == "/root" ]]; then
+  export HOME="/home/node"
+else
+  export HOME
+fi
 export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-${OPENCLAW_STATE_DIR}/openclaw.json}"
 export OPENCLAW_CONFIG="${OPENCLAW_CONFIG:-${OPENCLAW_CONFIG_PATH}}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-${OPENCLAW_STATE_DIR}/runtime}"

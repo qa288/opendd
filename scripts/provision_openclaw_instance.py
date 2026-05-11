@@ -264,6 +264,9 @@ def compose_yaml(service_name: str, container_name: str, image: str) -> str:
     env_file:
       - .env
     environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node/.openclaw
+      XDG_DATA_HOME: /home/node/.openclaw/home/.local/share
       OPENCLAW_PUBLIC_URL: ${{OPENCLAW_PUBLIC_URL}}
       LARK_MCP_PUBLIC_URL: ${{LARK_MCP_PUBLIC_URL}}
       OPENCLAW_CONFIG: ${{OPENCLAW_CONFIG:-/home/node/.openclaw/openclaw.json}}
@@ -277,6 +280,7 @@ def compose_yaml(service_name: str, container_name: str, image: str) -> str:
       FEISHU_OWNER_OPEN_ID: ${{FEISHU_OWNER_OPEN_ID:-}}
       FEISHU_AUTH_TARGET_MODE: ${{FEISHU_AUTH_TARGET_MODE:-first_sender}}
       FEISHU_AUTH_TARGET: ${{FEISHU_AUTH_TARGET:-}}
+      FEISHU_AUTH_CARD_MODE: ${{FEISHU_AUTH_CARD_MODE:-guided}}
       FEISHU_AUTH_BIND_FIRST_USER: ${{FEISHU_AUTH_BIND_FIRST_USER:-1}}
       OPENDD_PAIRING_AUTH_WATCHER: ${{OPENDD_PAIRING_AUTH_WATCHER:-1}}
       FEISHU_DM_POLICY: ${{FEISHU_DM_POLICY:-pairing}}
@@ -361,9 +365,12 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
             "OPENDD_SEND_AUTH_CARD_ON_START": "0",
             "OPENCLAW_PUBLIC_URL": f"https://{args.domain}",
             "LARK_MCP_PUBLIC_URL": f"https://{args.domain}",
+            "HOME": "/home/node",
+            "OPENCLAW_HOME": "/home/node/.openclaw",
             "OPENCLAW_CONFIG": "/home/node/.openclaw/openclaw.json",
             "OPENCLAW_CONFIG_PATH": "/home/node/.openclaw/openclaw.json",
             "OPENCLAW_STATE_DIR": "/home/node/.openclaw",
+            "XDG_DATA_HOME": "/home/node/.openclaw/home/.local/share",
             "OPENCLAW_GATEWAY_TOKEN": args.gateway_token or secrets.token_urlsafe(32),
             "OPENCLAW_EMBEDDING_PROVIDER": args.embedding_provider or env.get("OPENCLAW_EMBEDDING_PROVIDER", "openai"),
             "OPENCLAW_EMBEDDING_API_KEY": args.embedding_api_key or env.get("OPENCLAW_EMBEDDING_API_KEY", ""),
@@ -376,6 +383,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
             "FEISHU_OWNER_OPEN_ID": args.owner_open_id or "",
             "FEISHU_AUTH_TARGET_CHAT_ID": args.auth_chat_id,
             "FEISHU_AUTH_TARGET": args.auth_chat_id,
+            "FEISHU_AUTH_CARD_MODE": "guided",
             "FEISHU_AUTH_TARGET_MODE": args.auth_target_mode,
             "FEISHU_AUTH_BIND_FIRST_USER": "1" if args.auth_target_mode != "fixed" else "0",
             "OPENDD_PAIRING_AUTH_WATCHER": "1" if args.auth_target_mode != "fixed" else "0",
