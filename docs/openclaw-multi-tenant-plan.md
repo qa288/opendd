@@ -337,6 +337,7 @@ provision-openclaw --interactive --direct
 1Panel 模式下需要关注：
 
 - 应用/智能体列表是否可见。
+- 新实例是否加入共享 Docker 网络 `openclaw-net`。
 - 网站反代是否生效。
 - SSL 证书是否由 1Panel 管理和续期。
 - 域名是否能访问。

@@ -49,6 +49,9 @@ volumes:
   - /data/openclaw-tenants/user001/openclaw:/home/node/.openclaw
 ```
 
+Tenants can share one Docker bridge network. The helper scripts default to
+`openclaw-net` and create it when Docker is available.
+
 Everything important is stored under that mount, including:
 
 - OpenClaw config: `openclaw.json`

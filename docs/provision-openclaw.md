@@ -64,6 +64,20 @@ OPENCLAW_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 `OPENCLAW_EMBEDDING_API_KEY` can be set when the embedding provider uses a
 separate key. If it is empty, the image falls back to `DASHSCOPE_API_KEY`.
 
+## Docker Network
+
+New instances use one shared Docker bridge network by default:
+
+```text
+OPENDD_DOCKER_NETWORK=openclaw-net
+```
+
+The provisioning script checks whether this network exists before starting the
+container and creates it only when missing. Per-tenant isolation is still handled
+by separate container names, host ports, data directories, gateway tokens,
+Feishu app credentials, OAuth token stores, memories, and vector data. Use
+`--docker-network <name>` only when a host needs a different shared network.
+
 ## Feishu Open Platform
 
 Before sending the authorization card, add this redirect URL in the Feishu app:

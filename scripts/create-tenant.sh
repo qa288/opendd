@@ -5,11 +5,15 @@ tenant_id="${TENANT_ID:?set TENANT_ID, e.g. user001}"
 tenant_domain="${TENANT_DOMAIN:?set TENANT_DOMAIN, e.g. user001.ope.tyos.cc}"
 web_port="${WEB_PORT:?set WEB_PORT, e.g. 18791}"
 oauth_port="${OAUTH_PORT:?set OAUTH_PORT, e.g. 31891}"
+docker_network="${OPENDD_DOCKER_NETWORK:-openclaw-net}"
 base_dir="${OPENCLAW_TENANT_ROOT:-/data/openclaw-tenants}"
 tenant_dir="${base_dir}/${tenant_id}"
 
 mkdir -p "${tenant_dir}/openclaw" "${tenant_dir}/backups"
 install -m 0644 compose/docker-compose.tenant.yml "${tenant_dir}/docker-compose.yml"
+if command -v docker >/dev/null 2>&1; then
+  docker network inspect "${docker_network}" >/dev/null 2>&1 || docker network create "${docker_network}" >/dev/null
+fi
 
 gateway_token="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
 cat >"${tenant_dir}/.env" <<ENV
@@ -19,6 +23,7 @@ TENANT_DATA_DIR=${tenant_dir}/openclaw
 WEB_PORT=${web_port}
 OAUTH_PORT=${oauth_port}
 OPENDD_IMAGE=${OPENDD_IMAGE:-ghcr.io/qa288/opendd:2026.5.7}
+OPENDD_DOCKER_NETWORK=${docker_network}
 OPENDD_RENDER_CONFIG=missing
 OPENDD_SEND_AUTH_CARD_ON_START=${OPENDD_SEND_AUTH_CARD_ON_START:-0}
 OPENDD_PAIRING_AUTH_WATCHER=${OPENDD_PAIRING_AUTH_WATCHER:-1}

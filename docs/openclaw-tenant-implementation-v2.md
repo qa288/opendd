@@ -72,6 +72,16 @@ data/conf/openclaw.json
 
 不要把腾讯云密钥写入部署脚本或仓库。
 
+### 2.4 容器网络默认共用
+
+后续实例默认加入同一个 Docker bridge 网络：
+
+```text
+openclaw-net
+```
+
+部署脚本会在启动容器前检查并创建这个网络。实例隔离依赖独立容器名、宿主机端口、数据目录、管理 token、飞书应用配置、OAuth token、记忆库和向量库，不依赖每个容器单独分配一个网段。
+
 ## 3. 目录结构
 
 1Panel 模式实例目录：
@@ -174,6 +184,7 @@ provision-openclaw \
 脚本会完成：
 
 - 分配端口。
+- 确认共享 Docker 网络 `openclaw-net` 存在。
 - 生成 `.env`。
 - 生成 `docker-compose.yml`。
 - 生成 `tenant.json`。

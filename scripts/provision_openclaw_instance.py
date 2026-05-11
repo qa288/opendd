@@ -36,6 +36,7 @@ DEFAULT_IMAGE = "ghcr.io/qa288/opendd:2026.5.7"
 DEFAULT_PANEL_DB = Path("/opt/1panel/db/agent.db")
 DEFAULT_PANEL_BASE = Path("/opt/1panel/apps/openclaw")
 DEFAULT_DIRECT_BASE = Path("/opt/openclaw-instances")
+DEFAULT_DOCKER_NETWORK = "openclaw-net"
 CONTAINER_HTTP_PORT = 18789
 CONTAINER_OAUTH_PORT = 31888
 
@@ -135,7 +136,19 @@ def utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def compose_yaml(service_name: str, container_name: str, image: str) -> str:
+def compose_yaml(service_name: str, container_name: str, image: str, docker_network: str) -> str:
+    network_block = ""
+    service_network_block = ""
+    if docker_network:
+        network_block = f"""
+networks:
+  openclaw-shared:
+    external: true
+    name: ${{OPENDD_DOCKER_NETWORK:-{docker_network}}}
+"""
+        service_network_block = """
+    networks:
+      - openclaw-shared"""
     return f"""services:
   {service_name}:
     image: ${{OPENDD_IMAGE:-{image}}}
@@ -185,7 +198,8 @@ def compose_yaml(service_name: str, container_name: str, image: str) -> str:
     volumes:
       - ./data/conf:/home/node/.openclaw
       - ./data/workspace:/home/node/.openclaw/workspace
-"""
+{service_network_block}
+{network_block}"""
 
 
 def copy_model_defaults(template_env: Dict[str, str]) -> Dict[str, str]:
@@ -230,6 +244,7 @@ def tenant_manifest(
         "mode": "panel" if args.panel else "direct",
         "image": args.image,
         "containerName": container_name,
+        "dockerNetwork": args.docker_network,
         "paths": {
             "instance": str(instance_dir),
             "env": str(instance_dir / ".env"),
@@ -323,6 +338,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
             "HOST_IP": "",
             "ALLOWED_ORIGIN": f"https://{args.domain}",
             "OPENDD_IMAGE": args.image,
+            "OPENDD_DOCKER_NETWORK": args.docker_network,
             "OPENDD_RENDER_CONFIG": "missing",
             "OPENDD_SEND_AUTH_CARD_ON_START": "0",
             "OPENCLAW_PUBLIC_URL": f"https://{args.domain}",
@@ -358,7 +374,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
     write_env(instance_dir / ".env", env)
     write_tenant_manifest(args, instance_dir, container_name, http_port, oauth_port, env)
     (instance_dir / "docker-compose.yml").write_text(
-        compose_yaml(service_name, container_name, args.image),
+        compose_yaml(service_name, container_name, args.image, args.docker_network),
         encoding="utf-8",
     )
 
@@ -475,7 +491,20 @@ def panel_register(args: argparse.Namespace, instance_dir: Path, container_name:
         conn.close()
 
 
-def start_container(instance_dir: Path) -> None:
+def ensure_docker_network(network: str) -> None:
+    if not network:
+        return
+    inspect = run(["docker", "network", "inspect", network], check=False)
+    if inspect.returncode == 0:
+        return
+    result = run(["docker", "network", "create", network], check=False)
+    print(result.stdout)
+    if result.returncode != 0:
+        die(f"failed to create docker network: {network}")
+
+
+def start_container(instance_dir: Path, docker_network: str) -> None:
+    ensure_docker_network(docker_network)
     compose = shutil.which("docker-compose")
     if compose:
         cmd = [compose, "up", "-d"]
@@ -697,6 +726,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--oauth-port", type=int)
     parser.add_argument("--http-start", type=int, default=18813)
     parser.add_argument("--oauth-start", type=int, default=31893)
+    parser.add_argument("--docker-network", default=DEFAULT_DOCKER_NETWORK, help="shared external Docker network for all instances; use an empty value to let Compose create a per-instance default network")
     parser.add_argument("--gateway-token")
     parser.add_argument("--embedding-provider", default="")
     parser.add_argument("--embedding-api-key", default="")
@@ -782,7 +812,7 @@ def main() -> None:
     write_tenant_manifest(args, instance_dir, container_name, http_port, oauth_port, env, app_install_id, website_id)
 
     if not args.no_start:
-        start_container(instance_dir)
+        start_container(instance_dir, args.docker_network)
 
     if args.send_auth_card and args.auth_chat_id:
         send_auth_card(container_name, args.domain, args.auth_chat_id)
