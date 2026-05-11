@@ -284,9 +284,9 @@ async function main() {
   authHandler.setupRoutes();
   const result = await authHandler.reAuthorize(undefined, true);
   if (!result.authorizeUrl) throw new Error('Authorization URL was not generated.');
-  const authorizeUrl = new URL(result.authorizeUrl);
-  authorizeUrl.protocol = new URL(publicUrl).protocol;
-  authorizeUrl.host = new URL(publicUrl).host;
+  const localAuthorizeUrl = new URL(result.authorizeUrl);
+  const authorizeUrl = new URL('/authorize', publicUrl);
+  authorizeUrl.search = localAuthorizeUrl.search;
 
   console.log(`callback=${authHandler.callbackUrl}`);
   console.log(`target=${target}`);
