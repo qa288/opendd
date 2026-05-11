@@ -150,6 +150,7 @@ function setupGuideCard({ appId, callbackUrl, consoleUrl, authUrl }) {
           '1. 打开飞书开放平台应用列表，选择上面的 App ID 对应应用。',
           '2. 进入「安全设置」->「重定向 URL」，添加上面的地址并保存。',
           authUrl ? '3. 保存后回到这张卡片，点击「配置完成后授权」。' : '3. 保存后重新给机器人发一条消息，或让管理员重发授权卡片。',
+          authUrl ? '授权按钮约 10 分钟内有效；过期后系统会自动重发。' : '',
         ].join('\n'),
       },
       {

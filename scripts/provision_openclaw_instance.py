@@ -20,6 +20,7 @@ import getpass
 import json
 import os
 import secrets
+import shlex
 import shutil
 import socket
 import sqlite3
@@ -154,6 +155,45 @@ def deep_set_public_url(config: Dict[str, Any], domain: str) -> None:
                 env.setdefault("LARK_MCP_TOOLS", "preset.default")
 
 
+def apply_gateway_config(config: Dict[str, Any], domain: str, env: Dict[str, str]) -> None:
+    gateway = config.setdefault("gateway", {})
+    if not isinstance(gateway, dict):
+        gateway = {}
+        config["gateway"] = gateway
+
+    gateway["mode"] = gateway.get("mode") or "local"
+    gateway["bind"] = gateway.get("bind") or "lan"
+    gateway["port"] = int(gateway.get("port") or CONTAINER_HTTP_PORT)
+
+    auth = gateway.setdefault("auth", {})
+    if not isinstance(auth, dict):
+        auth = {}
+        gateway["auth"] = auth
+    auth["mode"] = "token"
+    auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
+
+    control_ui = gateway.setdefault("controlUi", {})
+    if not isinstance(control_ui, dict):
+        control_ui = {}
+        gateway["controlUi"] = control_ui
+
+    origins = [
+        "http://127.0.0.1:18789",
+        "http://localhost:18789",
+        f"https://{domain}",
+    ]
+    for item in (env.get("OPENCLAW_ALLOWED_ORIGINS") or "").split(","):
+        item = item.strip()
+        if item and item not in origins:
+            origins.append(item)
+    control_ui["allowedOrigins"] = origins
+    control_ui["dangerouslyDisableDeviceAuth"] = True
+
+    trusted = gateway.get("trustedProxies")
+    if not isinstance(trusted, list) or not trusted:
+        gateway["trustedProxies"] = ["127.0.0.1/32"]
+
+
 def apply_embedding_config(config: Dict[str, Any], env: Dict[str, str]) -> None:
     agents = config.setdefault("agents", {})
     if not isinstance(agents, dict):
@@ -197,6 +237,7 @@ def sanitize_config(
 ) -> Dict[str, Any]:
     config = copy.deepcopy(template_config)
     deep_set_public_url(config, domain)
+    apply_gateway_config(config, domain, env)
     apply_embedding_config(config, env)
 
     channels = config.setdefault("channels", {})
@@ -269,6 +310,7 @@ def compose_yaml(service_name: str, container_name: str, image: str) -> str:
       XDG_DATA_HOME: /home/node/.openclaw/home/.local/share
       OPENCLAW_PUBLIC_URL: ${{OPENCLAW_PUBLIC_URL}}
       LARK_MCP_PUBLIC_URL: ${{LARK_MCP_PUBLIC_URL}}
+      OPENCLAW_ALLOWED_ORIGINS: ${{OPENCLAW_ALLOWED_ORIGINS:-}}
       OPENCLAW_CONFIG: ${{OPENCLAW_CONFIG:-/home/node/.openclaw/openclaw.json}}
       OPENCLAW_CONFIG_PATH: ${{OPENCLAW_CONFIG_PATH:-/home/node/.openclaw/openclaw.json}}
       OPENCLAW_STATE_DIR: ${{OPENCLAW_STATE_DIR:-/home/node/.openclaw}}
@@ -365,6 +407,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
             "OPENDD_SEND_AUTH_CARD_ON_START": "0",
             "OPENCLAW_PUBLIC_URL": f"https://{args.domain}",
             "LARK_MCP_PUBLIC_URL": f"https://{args.domain}",
+            "OPENCLAW_ALLOWED_ORIGINS": f"https://{args.domain}",
             "HOME": "/home/node",
             "OPENCLAW_HOME": "/home/node/.openclaw",
             "OPENCLAW_CONFIG": "/home/node/.openclaw/openclaw.json",
@@ -679,10 +722,12 @@ def panel_register_website(args: argparse.Namespace, app_install_id: int, http_p
 
 def send_auth_card(container_name: str, domain: str, auth_chat_id: str) -> None:
     script = "/opt/opendd/bin/send-feishu-auth-card.js"
+    target = shlex.quote(auth_chat_id)
+    public_url = shlex.quote(f"https://{domain}")
     shell = (
         "mkdir -p /home/node/.openclaw/logs && "
         f"nohup node {script} "
-        f"--target {auth_chat_id} --public-url https://{domain} "
+        f"--target {target} --public-url {public_url} --mode guided "
         "> /home/node/.openclaw/logs/feishu-auth-card.log 2>&1 &"
     )
     result = run(["docker", "exec", "-d", container_name, "sh", "-lc", shell], check=False)

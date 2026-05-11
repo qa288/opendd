@@ -10,9 +10,10 @@ const statePath = process.env.FEISHU_AUTH_WATCHER_STATE_FILE || `${credentialsDi
 const mode = process.env.FEISHU_AUTH_TARGET_MODE || 'first_sender';
 const publicUrl = (process.env.OPENCLAW_PUBLIC_URL || process.env.LARK_MCP_PUBLIC_URL || '').replace(/\/$/, '');
 const pollMs = Number(process.env.FEISHU_AUTH_WATCHER_POLL_MS || 15000);
-const cooldownMs = Number(process.env.FEISHU_AUTH_CARD_COOLDOWN_MS || 6 * 60 * 60 * 1000);
 const sendScript = process.env.FEISHU_AUTH_CARD_SCRIPT || '/opt/opendd/bin/send-feishu-auth-card.js';
 const cardMode = process.env.FEISHU_AUTH_CARD_MODE || 'guided';
+const defaultCooldownMs = cardMode === 'guided' ? 30 * 60 * 1000 : 6 * 60 * 60 * 1000;
+const cooldownMs = Number(process.env.FEISHU_AUTH_CARD_COOLDOWN_MS || defaultCooldownMs);
 const bindFirstUser = String(process.env.FEISHU_AUTH_BIND_FIRST_USER || '1') !== '0';
 const once = process.argv.includes('--once') || process.env.FEISHU_AUTH_WATCHER_ONCE === '1';
 
