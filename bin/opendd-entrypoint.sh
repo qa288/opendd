@@ -66,6 +66,15 @@ refresh_plugin_registry() {
   chmod 600 "${OPENCLAW_STATE_DIR}/plugins/installs.json" 2>/dev/null || true
 }
 
+trust_plugin_extensions() {
+  [[ -d "${OPENCLAW_STATE_DIR}/extensions" ]] || return 0
+  while IFS= read -r -d '' plugin_dir; do
+    chown -R root:root "${plugin_dir}"
+    find "${plugin_dir}" -type d -exec chmod 755 {} +
+    find "${plugin_dir}" -type f -exec chmod 644 {} +
+  done < <(find "${OPENCLAW_STATE_DIR}/extensions" -mindepth 1 -maxdepth 1 -type d -print0)
+}
+
 if [[ "$(id -u)" == "0" ]]; then
   mkdir -p "${OPENCLAW_STATE_DIR}"
   chown -R node:node "${OPENCLAW_STATE_DIR}"
@@ -79,6 +88,7 @@ if [[ "$(id -u)" == "0" ]]; then
       "/opt/opendd/weixin-npm/node_modules/@tencent-weixin/openclaw-weixin" \
       "/opt/opendd/weixin-npm/node_modules"
   fi
+  trust_plugin_extensions
   if [[ ! -f "${OPENCLAW_CONFIG_PATH}" || "${OPENDD_RENDER_CONFIG:-missing}" == "always" ]]; then
     node /opt/opendd/bin/render-openclaw-config.js
     chown node:node "${OPENCLAW_CONFIG_PATH}" 2>/dev/null || true
