@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const openclawHome = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || '/home/node/.openclaw';
 const credentialsDir = `${openclawHome}/credentials`;
@@ -54,16 +54,66 @@ function hasUserToken() {
   return candidates.some((path) => fs.existsSync(path) && fs.statSync(path).size > 0);
 }
 
-function firstPairingTarget() {
+function normalizePairingCode(request) {
+  for (const key of ['code', 'pairingCode', 'pairing_code', 'approvalCode', 'approval_code']) {
+    const value = String(request && request[key] ? request[key] : '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function pairingRequests() {
   const data = readJson(pairingPath, {});
   const requests = Array.isArray(data.requests) ? data.requests.slice() : [];
   requests.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-  for (const request of requests) {
-    const id = String(request.id || '').trim();
-    if (!id) continue;
-    if (id.startsWith('ou_')) return id;
+  return requests;
+}
+
+function firstPairingRequest() {
+  for (const request of pairingRequests()) {
+    const id = String(request.id || request.openId || request.open_id || '').trim();
+    if (!id || !id.startsWith('ou_')) continue;
+    return { ...request, id, code: normalizePairingCode(request) };
   }
-  return '';
+  return null;
+}
+
+function firstPairingTarget() {
+  const request = firstPairingRequest();
+  return request ? request.id : '';
+}
+
+function approvePairing(request) {
+  if (process.env.FEISHU_PAIRING_AUTO_APPROVE === '0') return false;
+  if (!request || !request.code) return false;
+  const result = spawnSync(
+    'openclaw',
+    ['pairing', 'approve', 'feishu', request.code],
+    {
+      encoding: 'utf8',
+      timeout: 15000,
+      env: {
+        ...process.env,
+        OPENCLAW_HOME: openclawHome,
+        OPENCLAW_STATE_DIR: openclawHome,
+      },
+    },
+  );
+  const output = `${result.stdout || ''}${result.stderr || ''}`;
+  if (result.status === 0 && !output.includes('Failed to start CLI')) {
+    log(`PAIRING_APPROVED target=${safeId(request.id)} code=${request.code}`);
+    return true;
+  }
+  log(`WARN pairing_approve_failed target=${safeId(request.id)} code=${request.code} status=${result.status} output=${output.trim().slice(0, 200)}`);
+  return false;
+}
+
+function approveKnownPairings() {
+  for (const request of pairingRequests()) {
+    const id = String(request.id || request.openId || request.open_id || '').trim();
+    if (!id || !id.startsWith('ou_')) continue;
+    approvePairing({ ...request, id, code: normalizePairingCode(request) });
+  }
 }
 
 function fixedTarget() {
@@ -135,6 +185,7 @@ function tick() {
     return true;
   }
 
+  approveKnownPairings();
   const target = resolveTarget();
   if (!target) {
     log(`WAIT mode=${mode} no_target`);
