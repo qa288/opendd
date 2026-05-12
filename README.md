@@ -113,6 +113,16 @@ configuration, can register the app/agent in 1Panel, and can create reverse
 proxy files for the domain. See `docs/provision-openclaw.md` for the full
 operator flow.
 
+After deployment, run the deep checker:
+
+```bash
+check-openclaw-instance --name user001 --domain user001.ope.tyos.cc --deep
+```
+
+Deep mode starts `feishu-user` MCP and verifies a real `tools/list` handshake,
+which catches OAuth issuer and runtime MCP failures that static config checks
+cannot see.
+
 ## Send Feishu authorization card
 
 After the container starts:
@@ -139,6 +149,15 @@ the bot in a group. OpenClaw records the pairing request, and
 sender. The card shows the app ID, the exact redirect URL to add in Feishu Open
 Platform, and the authorization button. If a user token already exists, the
 watcher does nothing.
+
+Feishu OAuth scopes are defined in one shared helper:
+
+```text
+bin/feishu-oauth-scopes.js
+```
+
+The auth card, manual login helper, and MCP starter all use this helper. Do not
+edit scopes separately in multiple scripts.
 
 ## Backup
 

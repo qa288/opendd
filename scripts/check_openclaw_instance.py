@@ -187,7 +187,7 @@ def check_container_runtime(container_name: str) -> None:
         container_name,
         "sh",
         "-lc",
-        "grep -q 'OPENDD file-backed encryption key fallback enabled' "
+        "grep -Eq 'OPENDD file-backed encryption key fallback enabled|LARK_MCP_STORAGE_KEY|fallbackKeyFile|file-backed encryption key fallback' "
         "/opt/opendd/lark-openapi/node_modules/@larksuiteoapi/lark-mcp/dist/auth/utils/storage-manager.js",
     ])
     status(
@@ -209,6 +209,22 @@ def check_container_runtime(container_name: str) -> None:
         "lark-mcp public URL patch",
         "OK" if public_url_patch.returncode == 0 else "WARN",
         "HTTPS issuer/callback enabled" if public_url_patch.returncode == 0 else public_url_patch.stdout.strip()[:180],
+    )
+
+    oauth_scopes = run([
+        "docker",
+        "exec",
+        container_name,
+        "sh",
+        "-lc",
+        "node -e \"const s=require('/opt/opendd/bin/feishu-oauth-scopes').defaultFeishuOAuthScopeText();"
+        "for (const x of ['offline_access','wiki:space:retrieve','docx:document:readonly','im:chat:read']) "
+        "if (!s.includes(x)) process.exit(1);\"",
+    ])
+    status(
+        "feishu OAuth scope helper",
+        "OK" if oauth_scopes.returncode == 0 else "WARN",
+        "single shared scope source present" if oauth_scopes.returncode == 0 else oauth_scopes.stdout.strip()[:180],
     )
 
 

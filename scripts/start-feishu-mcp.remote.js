@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { feishuOAuthScopeText } = require('./feishu-oauth-scopes');
 
 const openclawHome = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || '/home/node/.openclaw';
 const runtimeEnv = {
@@ -35,33 +36,7 @@ const tools = process.env.LARK_MCP_TOOLS || 'preset.default';
 const language = process.env.LARK_MCP_LANGUAGE || 'zh';
 const host = process.env.LARK_MCP_HOST || '0.0.0.0';
 const port = process.env.LARK_MCP_PORT || process.env.LARK_MCP_LOGIN_PORT || '31888';
-const defaultOAuthScope = [
-  'offline_access',
-  'auth:user.id:read',
-  'contact:user.base:readonly',
-  'contact:user.basic_profile:readonly',
-  'contact:contact.base:readonly',
-  'wiki:space:retrieve',
-  'wiki:node:read',
-  'wiki:node:retrieve',
-  'space:document:retrieve',
-  'docx:document:readonly',
-  'sheets:spreadsheet.meta:read',
-  'sheets:spreadsheet:read',
-  'base:app:read',
-  'base:table:read',
-  'base:field:read',
-  'base:view:read',
-  'base:record:retrieve',
-  'search:docs:read',
-  'im:chat:read',
-  'im:chat.members:read',
-  'im:message:readonly',
-  'im:message.group_msg:get_as_user',
-  'im:message.p2p_msg:get_as_user',
-  'search:message',
-].join(' ');
-const scope = process.env.LARK_MCP_SCOPE || defaultOAuthScope;
+const scope = feishuOAuthScopeText();
 const args = [
   bin,
   'mcp',

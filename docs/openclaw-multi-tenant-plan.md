@@ -92,6 +92,9 @@
    并读取对应 `.env` 中的授权目标；旧的内置实例列表只作为兼容兜底。
    单实例排查可以加 `--instance m2`，旧实例兼容可以加 `--include-legacy-defaults`。
 
+   旧实例如果没有 `tenant.json`，先用 `backfill-openclaw-panel-metadata`
+   补齐无密钥 manifest 和 1Panel agent 状态，再纳入自动发现。
+
 ## 3. 整体架构
 
 ```text
@@ -252,6 +255,9 @@ https://<domain>/callback
 4. 用户在飞书开放平台添加回调地址后，点击卡片里的授权按钮。
 5. lark-mcp 保存 user token 和 refresh token。
 6. 后续 OpenClaw 使用用户身份访问飞书资源。
+
+OAuth scope 已收口到 `bin/feishu-oauth-scopes.js`。授权卡、手动登录脚本和
+`feishu-user` MCP 启动脚本都从这里读取默认 scope，避免后续权限调整时多处漂移。
 
 推荐的授权目标模式是 `first_sender`。在这个模式下，运维不需要提前知道用户的 `open_id` 或授权目标 `chat_id`。用户只要先私聊机器人，或在群里 @ 机器人，OpenClaw 飞书插件会写入 `feishu-pairing.json`，镜像内的 `feishu-pairing-auth-watcher.js` 会读取第一个用户并自动发送引导式 OAuth 授权卡片。
 

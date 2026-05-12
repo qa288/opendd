@@ -236,6 +236,8 @@ The checker reports:
 - Shared Docker network attachment.
 - Auth-card script version.
 - `lark-mcp` storage fallback patch.
+- `lark-mcp` public HTTPS issuer patch.
+- Feishu OAuth scope helper presence.
 - Recent model and Feishu WebSocket readiness log lines.
 - Generated `openclaw.json` domain/model/channel sanity.
 - Feishu user MCP public URL.
@@ -245,9 +247,63 @@ The checker reports:
 - Public HTTP/HTTPS health probes.
 - Feishu user token storage status.
 
+Use `--deep` after every new deployment and when debugging Feishu user identity:
+
+```bash
+check-openclaw-instance --name user03 --domain user03.example.com --deep
+```
+
+Deep mode starts `feishu-user` MCP and runs a real JSON-RPC `tools/list`
+handshake. This catches runtime-only failures, including the historical
+`Issuer URL must be HTTPS` failure that plain config checks could not detect.
+
 Runtime scripts under `bin/` are the source of truth for the image. The matching
 files under `scripts/` are kept in sync only for server hot-patching and should
 not diverge.
+
+## Keepalive
+
+The server keepalive command is:
+
+```bash
+openclaw-feishu-keepalive
+```
+
+It now discovers instances from:
+
+```text
+/opt/1panel/apps/openclaw/*/tenant.json
+```
+
+Use a single-instance run during troubleshooting:
+
+```bash
+openclaw-feishu-keepalive --instance m2 --timeout 30
+```
+
+Only enable automatic auth-card resend after several consecutive auth failures:
+
+```bash
+openclaw-feishu-keepalive \
+  --send-auth-card-on-fail \
+  --failures-before-auth-card 3 \
+  --auth-card-cooldown-hours 6
+```
+
+## Backfill Older Instances
+
+Older manually created instances may not have `tenant.json`, or their 1Panel
+agent status may still show `Installing`. Backfill them with:
+
+```bash
+backfill-openclaw-panel-metadata \
+  --instance ql1:ql1.tyos.cc:1Panel-openclaw-ql1 \
+  --instance wq1:wq1.tyos.cc:1Panel-openclaw-edhg
+```
+
+The backfill writes a secret-free manifest and aligns the 1Panel agent status
+and website ID. It does not copy or expose OAuth tokens, app secrets, model keys,
+memories, or vector data.
 
 ## Data Isolation
 

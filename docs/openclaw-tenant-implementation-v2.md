@@ -107,9 +107,13 @@ openclaw-net
 当前飞书接入分两层：
 
 - OpenClaw 飞书 channel：机器人身份，负责长连接、私聊、群聊、回复和卡片。
-- `lark-mcp` 用户身份桥接：飞书官方 OAuth `user_access_token`，负责按用户权限访问知识库、文档、群聊列表、群成员、消息等工具。
+- `lark-mcp` 用户身份桥接：飞书官方 OAuth `user_access_token`，负责按用户权限访问知识库、文档、多维表格、群聊列表、群成员等工具。
 
 授权卡片只是机器人发送的引导入口，不是新的身份体系。
+
+注意：当前 `lark-mcp 0.5.1` 里 `im.v1.message.list` 仍是 tenant token 工具，
+不是 user token 工具。也就是说，用户身份 MCP 能列群聊和群成员，但不能直接按
+用户身份拉完整私聊/群聊历史。需要读取历史消息时，应单独设计 tenant/app 权限链路。
 
 ## 4. 部署前准备
 
@@ -283,6 +287,7 @@ check-openclaw-instance --name m2 --domain m2.op.tyos.cc --deep
 - 授权卡脚本是否是支持公网 issuer 的新版。
 - lark-mcp storage fallback patch 是否生效。
 - lark-mcp OAuth public URL patch 是否生效。
+- 飞书 OAuth scope helper 是否存在，确保授权卡和 MCP 启动使用同一组 scope。
 - `--deep` 模式会真实启动 `feishu-user` MCP 并执行 `tools/list` 握手。
 - 近期日志是否有 `agent model`。
 - 飞书 WebSocket 是否 `ws client ready`。
@@ -294,6 +299,30 @@ check-openclaw-instance --name m2 --domain m2.op.tyos.cc --deep
 - 1Panel certificate 是否 `ready`。
 - 公网 HTTPS 是否 200/301/302/401。
 - 飞书用户 token 是否已落盘，文件密钥 fallback 是否存在。
+
+### 6.1 当前生产检查结果
+
+2026-05-12 已对当前四个实例做过深度检查：
+
+```text
+m1   m1.op.tyos.cc   OK
+m2   m2.op.tyos.cc   OK
+ql1  ql1.tyos.cc     OK
+wq1  wq1.tyos.cc     OK
+```
+
+检查通过项包括：
+
+- 容器 `running healthy`。
+- 飞书 WebSocket ready。
+- 1Panel app、agent、website、certificate 记录可见。
+- public HTTP 跳转和 public HTTPS 正常。
+- `feishu-user` MCP `tools/list` 深度握手正常。
+- 飞书用户 token 存在，文件密钥 fallback 存在。
+- `tenant.json` 已补齐。
+
+检查输出中若出现旧时间的 `failed to start server "feishu-user"` 日志，需要看时间。
+如果该日志早于最近一次修复或重启，且 `--deep` 握手为 OK，则是历史日志，不代表当前不可用。
 
 当前正常输出示例：
 
@@ -333,6 +362,50 @@ OK   public https - HTTP/2 200
 
 旧实例可能没有 `tenant.json`。这不影响继续运行，但建议在维护窗口补一份无密钥
 `tenant.json`，方便后续批量检查、备份和迁移。
+
+### 6.2 keepalive
+
+服务器保活命令：
+
+```bash
+openclaw-feishu-keepalive
+```
+
+当前脚本默认从下面目录自动发现实例：
+
+```text
+/opt/1panel/apps/openclaw/*/tenant.json
+```
+
+单实例排查：
+
+```bash
+openclaw-feishu-keepalive --instance m2 --timeout 30
+```
+
+只有确认连续授权失败时，才建议自动重发授权卡：
+
+```bash
+openclaw-feishu-keepalive \
+  --send-auth-card-on-fail \
+  --failures-before-auth-card 3 \
+  --auth-card-cooldown-hours 6
+```
+
+这样避免 15 分钟检查频繁给用户推送卡片，也避免把临时网络波动误判成授权失效。
+
+### 6.3 旧实例元数据补齐
+
+旧实例如果缺 `tenant.json`，或 1Panel 智能体状态仍显示 `Installing`，运行：
+
+```bash
+backfill-openclaw-panel-metadata \
+  --instance ql1:ql1.tyos.cc:1Panel-openclaw-ql1 \
+  --instance wq1:wq1.tyos.cc:1Panel-openclaw-edhg
+```
+
+该脚本只写无密钥 manifest，并修正 1Panel agent 的状态和 website_id。
+它不会复制或导出 App Secret、OAuth token、模型 key、记忆、向量库。
 
 ## 7. 常见问题
 
@@ -427,11 +500,13 @@ data/conf/home/.local/share/lark-mcp-nodejs/storage.json
 - 批量读取 `tenant.json` 做健康检查。
 - 增加批量备份和恢复脚本。
 - 增加一键重发飞书授权卡命令。
+- 按飞书开放平台限制，单独设计历史消息读取的 tenant/app 权限链路。
 
-## 9. 当前关键提交
+## 9. 当前关键脚本
 
 ```text
-44027e5 Simplify tenant provisioning structure
-934b74d Use public Feishu OAuth issuer
-f1cacf3 Drop internal port from Feishu auth links
+provision-openclaw
+check-openclaw-instance
+openclaw-feishu-keepalive
+backfill-openclaw-panel-metadata
 ```
