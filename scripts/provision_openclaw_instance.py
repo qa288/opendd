@@ -318,7 +318,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
 
     http_port = int(args.http_port or next_free_port(args.http_start))
     oauth_port = int(args.oauth_port or next_free_port(args.oauth_start))
-    container_name = args.container_name or f"1Panel-openclaw-{args.name}" if args.panel else f"openclaw-{args.name}"
+    container_name = args.container_name or (f"1Panel-openclaw-{args.name}" if args.panel else f"openclaw-{args.name}")
     service_name = "openclaw"
 
     if instance_dir.exists() and args.force:
@@ -476,7 +476,7 @@ def panel_register(args: argparse.Namespace, instance_dir: Path, container_name:
                     "base_url": template_map.get("base_url", ""),
                     "api_key": template_map.get("api_key", ""),
                     "token": load_env(instance_dir / ".env").get("OPENCLAW_GATEWAY_TOKEN", ""),
-                    "status": "Installing",
+                    "status": "Running",
                     "message": "",
                     "app_install_id": app_install_id,
                     "website_id": 0,

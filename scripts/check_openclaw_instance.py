@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -210,6 +212,43 @@ def check_container_runtime(container_name: str) -> None:
     )
 
 
+def check_feishu_user_mcp_handshake(container_name: str) -> None:
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "opendd-check", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    ]
+    payload = " ".join(shlex.quote(json.dumps(message, separators=(",", ":"))) for message in messages)
+    script = (
+        f"printf '%s\\n' {payload} | "
+        "timeout 15s node /opt/opendd/bin/start-feishu-mcp.js"
+    )
+    result = run(["docker", "exec", container_name, "sh", "-lc", script], timeout=22)
+    output = result.stdout
+    if "Issuer URL must be HTTPS" in output:
+        status("feishu user MCP handshake", "FAIL", "issuer URL is not HTTPS")
+        return
+    if result.returncode not in (0, 124):
+        status("feishu user MCP handshake", "FAIL", output.strip()[:240])
+        return
+    if '"serverInfo"' not in output or '"tools"' not in output:
+        status("feishu user MCP handshake", "WARN", output.strip()[:240] or f"exit={result.returncode}")
+        return
+
+    names = re.findall(r'"name":"([^"]+)"', output)
+    interesting = [name for name in names if name.startswith(("wiki_", "docx_", "im_", "bitable_"))]
+    status("feishu user MCP handshake", "OK", ", ".join(interesting[:8]) or f"{len(names)} tools")
+
+
 def resolve_container_name(
     name: str,
     explicit_container_name: str,
@@ -333,6 +372,7 @@ def main() -> int:
     parser.add_argument("--panel-db", default=str(DEFAULT_PANEL_DB))
     parser.add_argument("--manifest", default="")
     parser.add_argument("--skip-public-http", action="store_true")
+    parser.add_argument("--deep", action="store_true", help="run heavier runtime handshakes such as feishu-user MCP tools/list")
     args = parser.parse_args()
 
     manifest = resolve_manifest(args)
@@ -349,6 +389,8 @@ def main() -> int:
     check_container(container_name)
     check_docker_network(container_name, manifest)
     check_container_runtime(container_name)
+    if args.deep:
+        check_feishu_user_mcp_handshake(container_name)
     check_config(instance_dir, domain)
     check_feishu_user_token(instance_dir)
     check_panel(args.name, domain, container_name, instance_dir, Path(args.panel_db))

@@ -95,6 +95,7 @@ AUTH_FAILURE_MARKERS = [
 ]
 
 DEFAULT_STATE_FILE = Path("/var/lib/openclaw/feishu-keepalive-state.json")
+DEFAULT_PANEL_BASE = Path("/opt/1panel/apps/openclaw")
 
 
 def timestamp() -> str:
@@ -119,6 +120,70 @@ def load_state(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def load_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
+def discover_instances(base_dir: Path) -> list[Instance]:
+    instances: list[Instance] = []
+    for manifest_path in sorted(base_dir.glob("*/tenant.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        name = str(manifest.get("name") or manifest_path.parent.name)
+        container = str(manifest.get("containerName") or "")
+        public_url = str(manifest.get("publicUrl") or "")
+        if not public_url and manifest.get("domain"):
+            public_url = f"https://{manifest['domain']}"
+
+        env_path = manifest.get("paths", {}).get("env") if isinstance(manifest.get("paths"), dict) else ""
+        env = load_env(Path(env_path)) if env_path else load_env(manifest_path.parent / ".env")
+        auth_target = (
+            env.get("FEISHU_AUTH_TARGET")
+            or env.get("FEISHU_AUTH_TARGET_CHAT_ID")
+            or env.get("FEISHU_OWNER_OPEN_ID")
+            or ""
+        )
+
+        if not container or not public_url:
+            continue
+        instances.append(
+            Instance(
+                name=name,
+                container=container,
+                mcp_script="/opt/opendd/bin/start-feishu-mcp.js",
+                public_url=public_url.rstrip("/"),
+                auth_target=auth_target,
+            )
+        )
+    return instances
+
+
+def merge_instances(primary: list[Instance], fallback: list[Instance]) -> list[Instance]:
+    seen = {(item.name, item.container) for item in primary}
+    merged = primary[:]
+    for item in fallback:
+        key = (item.name, item.container)
+        if key not in seen:
+            merged.append(item)
+            seen.add(key)
+    return merged
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
@@ -250,12 +315,25 @@ def main() -> int:
     parser.add_argument("--failures-before-auth-card", type=int, default=3)
     parser.add_argument("--auth-card-cooldown-hours", type=int, default=6)
     parser.add_argument("--state-file", default=str(DEFAULT_STATE_FILE))
+    parser.add_argument("--base-dir", default=str(DEFAULT_PANEL_BASE))
+    parser.add_argument("--instance", action="append", default=[], help="limit checks to one or more instance names")
+    parser.add_argument("--include-legacy-defaults", action="store_true", help="also check the built-in legacy instance list")
     args = parser.parse_args()
+
+    instances = discover_instances(Path(args.base_dir))
+    if args.include_legacy_defaults or not instances:
+        instances = merge_instances(instances, DEFAULT_INSTANCES)
+    if args.instance:
+        wanted = set(args.instance)
+        instances = [instance for instance in instances if instance.name in wanted]
+    if not instances:
+        print(f"{timestamp()} no_instances")
+        return 1
 
     state_file = Path(args.state_file)
     state = load_state(state_file)
     exit_code = 0
-    for instance in DEFAULT_INSTANCES:
+    for instance in instances:
         instance_state = state.setdefault(instance.name, {})
         ok, reason = keepalive(instance, args.timeout)
         if ok:

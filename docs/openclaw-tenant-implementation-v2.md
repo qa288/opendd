@@ -268,6 +268,12 @@ python3 scripts/check_openclaw_instance.py --name m2 --domain m2.op.tyos.cc
 check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 ```
 
+部署后或排查飞书用户身份问题时，运行深度检查：
+
+```bash
+check-openclaw-instance --name m2 --domain m2.op.tyos.cc --deep
+```
+
 检查项包括：
 
 - `tenant.json` 是否存在。
@@ -277,6 +283,7 @@ check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 - 授权卡脚本是否是支持公网 issuer 的新版。
 - lark-mcp storage fallback patch 是否生效。
 - lark-mcp OAuth public URL patch 是否生效。
+- `--deep` 模式会真实启动 `feishu-user` MCP 并执行 `tools/list` 握手。
 - 近期日志是否有 `agent model`。
 - 飞书 WebSocket 是否 `ws client ready`。
 - `allowedOrigins` 是否只包含当前域名和 localhost。

@@ -88,6 +88,10 @@
    - 降低 MCP 冷启动超时概率。
    - 如果确认是授权类失败，可自动推送授权卡片。
 
+   当前脚本默认从 `/opt/1panel/apps/openclaw/*/tenant.json` 自动发现实例，
+   并读取对应 `.env` 中的授权目标；旧的内置实例列表只作为兼容兜底。
+   单实例排查可以加 `--instance m2`，旧实例兼容可以加 `--include-legacy-defaults`。
+
 ## 3. 整体架构
 
 ```text

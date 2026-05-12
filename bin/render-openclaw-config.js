@@ -36,6 +36,7 @@ const allowedOrigins = [
   publicUrl,
   ...list(process.env.OPENCLAW_ALLOWED_ORIGINS),
 ].filter(Boolean);
+const uniqueAllowedOrigins = [...new Set(allowedOrigins)];
 
 const modelDefinitions = [
   ['qwen3.6-plus', 'qwen3.6-plus', ['text', 'image']],
@@ -145,7 +146,7 @@ const config = {
       token: gatewayToken,
     },
     controlUi: {
-      allowedOrigins,
+      allowedOrigins: uniqueAllowedOrigins,
       dangerouslyDisableDeviceAuth: true,
     },
     trustedProxies: ['127.0.0.1/32'],
