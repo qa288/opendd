@@ -276,6 +276,7 @@ check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 - 容器是否加入共享 Docker 网络。
 - 授权卡脚本是否是支持公网 issuer 的新版。
 - lark-mcp storage fallback patch 是否生效。
+- lark-mcp OAuth public URL patch 是否生效。
 - 近期日志是否有 `agent model`。
 - 飞书 WebSocket 是否 `ws client ready`。
 - `allowedOrigins` 是否只包含当前域名和 localhost。
@@ -306,6 +307,22 @@ OK   public https - HTTP/2 200
 如果 `feishu user token` 是 `WARN`，说明容器已经起来，但用户身份 OAuth
 还没有完成，或 token 存储文件还没有生成。此时重发授权卡，让用户点击最新版
 无内部端口的授权链接。
+
+### 飞书工具边界
+
+当前镜像同时存在两类飞书能力：
+
+- OpenClaw 飞书频道插件：用于长连接收发消息、机器人回复、发送授权卡。它使用
+  app/tenant 身份。
+- `feishu-user` MCP：用于用户 OAuth 后按用户身份读取云文档、知识库、通讯录等。
+
+模型查询飞书知识库、云文档、多维表格时，应优先使用 `feishu-user` MCP 工具。
+如果日志里出现 `token_type=tenant` 的 wiki/doc/drive 权限错误，通常说明模型调用了
+频道插件暴露的 app 身份工具，或 `feishu-user` MCP 没有正常启动。
+
+`lark-mcp 0.5.1` 的 `im.v1.message.list` 工具定义仍是 `tenant` access token，
+在 `user_access_token` 模式下不会作为用户身份消息历史工具暴露。用户身份能列群聊和
+成员，但读取完整私聊/群聊历史仍需要按飞书开放平台的 tenant/app 权限链路单独处理。
 
 旧实例可能没有 `tenant.json`。这不影响继续运行，但建议在维护窗口补一份无密钥
 `tenant.json`，方便后续批量检查、备份和迁移。

@@ -194,6 +194,21 @@ def check_container_runtime(container_name: str) -> None:
         "file-backed fallback enabled" if storage_patch.returncode == 0 else storage_patch.stdout.strip()[:180],
     )
 
+    public_url_patch = run([
+        "docker",
+        "exec",
+        container_name,
+        "sh",
+        "-lc",
+        "grep -Eq 'OPENDD_PUBLIC_URL_ISSUER_PATCH|LARK_MCP_PUBLIC_URL' "
+        "/opt/opendd/lark-openapi/node_modules/@larksuiteoapi/lark-mcp/dist/auth/handler/handler.js",
+    ])
+    status(
+        "lark-mcp public URL patch",
+        "OK" if public_url_patch.returncode == 0 else "WARN",
+        "HTTPS issuer/callback enabled" if public_url_patch.returncode == 0 else public_url_patch.stdout.strip()[:180],
+    )
+
 
 def resolve_container_name(
     name: str,
