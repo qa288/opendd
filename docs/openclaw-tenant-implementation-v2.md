@@ -102,6 +102,15 @@ openclaw-net
 
 备份一个用户时，备份整个实例目录，重点是 `data/`。
 
+### 3.1 飞书身份分层
+
+当前飞书接入分两层：
+
+- OpenClaw 飞书 channel：机器人身份，负责长连接、私聊、群聊、回复和卡片。
+- `lark-mcp` 用户身份桥接：飞书官方 OAuth `user_access_token`，负责按用户权限访问知识库、文档、群聊列表、群成员、消息等工具。
+
+授权卡片只是机器人发送的引导入口，不是新的身份体系。
+
 ## 4. 部署前准备
 
 每个新用户需要准备：
@@ -237,6 +246,14 @@ https://<domain>:31888/authorize?...
 
 如果出现内部端口，说明授权卡脚本版本过旧，需要更新镜像或热更新 `send-feishu-auth-card.js`。
 
+授权卡发送日志：
+
+```text
+data/conf/logs/feishu-auth-card-watcher.log
+```
+
+watcher 只有看到 `card_sent` 或 `setup_card_sent` 后才进入正常冷却；发送失败会短间隔重试。
+
 ## 6. 检查步骤
 
 部署后运行：
@@ -256,9 +273,13 @@ check-openclaw-instance --name m1 --domain m1.op.tyos.cc
 - `tenant.json` 是否存在。
 - 容器名是否能从 `tenant.json` 或 1Panel app install 记录解析出来。
 - 容器是否 `running healthy`。
+- 容器是否加入共享 Docker 网络。
+- 授权卡脚本是否是支持公网 issuer 的新版。
+- lark-mcp storage fallback patch 是否生效。
 - 近期日志是否有 `agent model`。
 - 飞书 WebSocket 是否 `ws client ready`。
 - `allowedOrigins` 是否只包含当前域名和 localhost。
+- feishu-user MCP public URL 是否等于当前域名。
 - 1Panel agent 记录是否存在。
 - 1Panel app install 记录是否存在且 `Running`。
 - 1Panel website 是否存在且 `Running`。

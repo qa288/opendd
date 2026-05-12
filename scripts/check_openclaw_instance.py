@@ -81,6 +81,30 @@ def check_container(name: str) -> None:
         status("readiness logs", "INFO", "no model/ws readiness lines found in latest log tail")
 
 
+def check_docker_network(container_name: str, manifest: Dict[str, Any]) -> None:
+    network = str(manifest.get("dockerNetwork") or "").strip()
+    if not network:
+        status("docker network", "INFO", "not recorded in tenant manifest")
+        return
+
+    inspected = run(["docker", "network", "inspect", network])
+    if inspected.returncode != 0:
+        status("docker network", "FAIL", f"{network} missing")
+        return
+
+    container = run(["docker", "inspect", "--format", "{{json .NetworkSettings.Networks}}", container_name])
+    if container.returncode != 0:
+        status("docker network", "WARN", f"cannot inspect container networks: {container.stdout.strip()[:180]}")
+        return
+    try:
+        networks = json.loads(container.stdout.strip() or "{}")
+    except Exception as error:
+        status("docker network", "WARN", f"cannot parse container networks: {error}")
+        return
+    state = "OK" if network in networks else "WARN"
+    status("docker network", state, f"{network} attached={network in networks}")
+
+
 def check_config(instance_dir: Path, domain: str) -> None:
     config_path = instance_dir / "data/conf/openclaw.json"
     config = read_json(config_path)
@@ -101,6 +125,19 @@ def check_config(instance_dir: Path, domain: str) -> None:
     status("agent model", "OK" if primary else "WARN", primary or "missing")
     feishu = config.get("channels", {}).get("feishu", {})
     status("feishu channel config", "OK" if feishu.get("enabled") else "WARN", f"enabled={feishu.get('enabled')}")
+
+    expected_public = f"https://{domain}"
+    mcp = config.get("mcp", {}).get("servers", {}).get("feishu-user", {})
+    mcp_env = mcp.get("env", {}) if isinstance(mcp, dict) else {}
+    public_url = str(mcp_env.get("LARK_MCP_PUBLIC_URL") or "")
+    if public_url == expected_public:
+        status("feishu user MCP public URL", "OK", public_url)
+    elif public_url:
+        status("feishu user MCP public URL", "FAIL", f"{public_url} expected={expected_public}")
+    else:
+        status("feishu user MCP public URL", "WARN", "missing")
+    tools = str(mcp_env.get("LARK_MCP_TOOLS") or "preset.default")
+    status("feishu user MCP tools", "OK" if tools else "WARN", tools)
 
 
 def check_feishu_user_token(instance_dir: Path) -> None:
@@ -124,6 +161,38 @@ def check_feishu_user_token(instance_dir: Path) -> None:
             status("feishu user token", "WARN", f"fallback key exists but token storage is missing: {path}")
             return
     status("feishu user token", "WARN", "missing or empty; user OAuth may still be pending")
+
+
+def check_container_runtime(container_name: str) -> None:
+    script = "/opt/opendd/bin/send-feishu-auth-card.js"
+    card_script = run([
+        "docker",
+        "exec",
+        container_name,
+        "sh",
+        "-lc",
+        f"node -c {script} >/dev/null && grep -q 'get issuerUrl' {script} && grep -q 'card_sent' {script}",
+    ])
+    status(
+        "auth card script",
+        "OK" if card_script.returncode == 0 else "WARN",
+        "public issuer/card logging present" if card_script.returncode == 0 else card_script.stdout.strip()[:180],
+    )
+
+    storage_patch = run([
+        "docker",
+        "exec",
+        container_name,
+        "sh",
+        "-lc",
+        "grep -q 'OPENDD file-backed encryption key fallback enabled' "
+        "/opt/opendd/lark-openapi/node_modules/@larksuiteoapi/lark-mcp/dist/auth/utils/storage-manager.js",
+    ])
+    status(
+        "lark-mcp storage patch",
+        "OK" if storage_patch.returncode == 0 else "WARN",
+        "file-backed fallback enabled" if storage_patch.returncode == 0 else storage_patch.stdout.strip()[:180],
+    )
 
 
 def resolve_container_name(
@@ -263,6 +332,8 @@ def main() -> int:
 
     status("instance", "OK", f"{args.name} {domain}")
     check_container(container_name)
+    check_docker_network(container_name, manifest)
+    check_container_runtime(container_name)
     check_config(instance_dir, domain)
     check_feishu_user_token(instance_dir)
     check_panel(args.name, domain, container_name, instance_dir, Path(args.panel_db))

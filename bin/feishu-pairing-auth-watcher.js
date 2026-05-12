@@ -14,6 +14,8 @@ const sendScript = process.env.FEISHU_AUTH_CARD_SCRIPT || '/opt/opendd/bin/send-
 const cardMode = process.env.FEISHU_AUTH_CARD_MODE || 'guided';
 const defaultCooldownMs = cardMode === 'guided' ? 12 * 60 * 1000 : 6 * 60 * 60 * 1000;
 const cooldownMs = Number(process.env.FEISHU_AUTH_CARD_COOLDOWN_MS || defaultCooldownMs);
+const inFlightMs = Number(process.env.FEISHU_AUTH_CARD_INFLIGHT_MS || 90 * 1000);
+const failedRetryMs = Number(process.env.FEISHU_AUTH_CARD_FAILED_RETRY_MS || 2 * 60 * 1000);
 const bindFirstUser = String(process.env.FEISHU_AUTH_BIND_FIRST_USER || '1') !== '0';
 const once = process.argv.includes('--once') || process.env.FEISHU_AUTH_WATCHER_ONCE === '1';
 const cardLogPath = process.env.FEISHU_AUTH_CARD_LOG_FILE || `${openclawHome}/logs/feishu-auth-card-watcher.log`;
@@ -143,18 +145,101 @@ function ensureAllowFrom(target) {
 }
 
 function wasRecentlySent(state, target) {
-  const sentAt = Number((state.targets && state.targets[target] && state.targets[target].sentAt) || 0);
-  return sentAt && Date.now() - sentAt < cooldownMs;
+  const record = state.targets && state.targets[target] ? state.targets[target] : {};
+  const sentAt = Number(record.sentAt || 0);
+  return record.status === 'sent' && sentAt && Date.now() - sentAt < cooldownMs;
 }
 
-function markSent(state, target, status) {
+function markTarget(state, target, values) {
   state.targets = state.targets || {};
   state.targets[target] = {
-    sentAt: Date.now(),
-    sentAtIso: now(),
-    status,
+    ...(state.targets[target] || {}),
+    ...values,
   };
   writeJson(statePath, state);
+}
+
+function markAttemptStarted(state, target) {
+  markTarget(state, target, {
+    startedAt: Date.now(),
+    startedAtIso: now(),
+    status: 'started',
+  });
+}
+
+function markSent(state, target) {
+  markTarget(state, target, {
+    sentAt: Date.now(),
+    sentAtIso: now(),
+    status: 'sent',
+  });
+}
+
+function markFailed(state, target, reason) {
+  markTarget(state, target, {
+    failedAt: Date.now(),
+    failedAtIso: now(),
+    status: 'failed',
+    reason: String(reason || '').slice(0, 240),
+  });
+}
+
+function latestCardLogForTarget(target) {
+  try {
+    if (!fs.existsSync(cardLogPath)) return '';
+    const text = fs.readFileSync(cardLogPath, 'utf8');
+    const exact = `target=${target}`;
+    const safe = `target=${safeId(target)}`;
+    const exactIndex = text.lastIndexOf(exact);
+    const safeIndex = text.lastIndexOf(safe);
+    const index = Math.max(exactIndex, safeIndex);
+    return index >= 0 ? text.slice(index) : text.slice(-8000);
+  } catch (error) {
+    log(`WARN read_card_log_failed path=${cardLogPath} error=${error.message}`);
+    return '';
+  }
+}
+
+function refreshSendStatus(state, target) {
+  const record = state.targets && state.targets[target] ? state.targets[target] : null;
+  if (!record || record.status === 'sent') return record ? record.status : '';
+  if (record.status === 'failed') return 'failed';
+
+  const targetLog = latestCardLogForTarget(target);
+  if (/(^|\n)(card_sent|setup_card_sent)=/.test(targetLog)) {
+    markSent(state, target);
+    log(`AUTH_CARD target=${safeId(target)} status=sent`);
+    return 'sent';
+  }
+
+  const failure = targetLog.match(/(Error: .+|send card failed: .+|tenant_access_token failed: .+|Issuer URL must be HTTPS|Missing .+)/);
+  if (failure) {
+    markFailed(state, target, failure[1]);
+    log(`WARN auth_card_failed target=${safeId(target)} reason=${failure[1].slice(0, 180)}`);
+    return 'failed';
+  }
+
+  return record.status || '';
+}
+
+function shouldWaitBeforeSending(state, target) {
+  const status = refreshSendStatus(state, target);
+  const record = state.targets && state.targets[target] ? state.targets[target] : {};
+  const age = (field) => Date.now() - Number(record[field] || 0);
+
+  if (status === 'sent' && wasRecentlySent(state, target)) {
+    log(`WAIT target=${safeId(target)} cooldown_active`);
+    return true;
+  }
+  if (status === 'started' && record.startedAt && age('startedAt') < inFlightMs) {
+    log(`WAIT target=${safeId(target)} auth_card_inflight`);
+    return true;
+  }
+  if (status === 'failed' && record.failedAt && age('failedAt') < failedRetryMs) {
+    log(`WAIT target=${safeId(target)} recent_auth_card_failure`);
+    return true;
+  }
+  return false;
 }
 
 function sendAuthCard(target) {
@@ -181,8 +266,13 @@ function sendAuthCard(target) {
       },
     },
   );
+  fs.closeSync(logFd);
   child.on('error', (error) => {
     log(`WARN auth_card_spawn_failed target=${safeId(target)} error=${error.message}`);
+  });
+  child.on('exit', (code, signal) => {
+    if (code && code !== 0) log(`WARN auth_card_process_exit target=${safeId(target)} code=${code}`);
+    if (signal) log(`WARN auth_card_process_signal target=${safeId(target)} signal=${signal}`);
   });
   child.unref();
   return true;
@@ -202,15 +292,14 @@ function tick() {
   }
 
   const state = readJson(statePath, { version: 1, targets: {} });
-  if (wasRecentlySent(state, target)) {
-    log(`WAIT target=${safeId(target)} cooldown_active`);
+  if (shouldWaitBeforeSending(state, target)) {
     ensureAllowFrom(target);
     return false;
   }
 
   ensureAllowFrom(target);
   if (sendAuthCard(target)) {
-    markSent(state, target, 'started');
+    markAttemptStarted(state, target);
     log(`AUTH_CARD target=${safeId(target)} status=started`);
     return true;
   }

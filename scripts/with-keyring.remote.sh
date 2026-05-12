@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/home/node/.openclaw}"
+export OPENCLAW_HOME="${OPENCLAW_HOME:-${OPENCLAW_STATE_DIR}}"
 if [[ -z "${HOME:-}" || "${HOME}" == "/home/node" ]]; then
-  export HOME="/home/node/.openclaw/home"
+  export HOME="${OPENCLAW_STATE_DIR}/home"
 fi
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/home/node/.openclaw/runtime}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-/home/node/.openclaw/home/.local/share}"
-export XDG_STATE_HOME="${XDG_STATE_HOME:-/home/node/.openclaw/state}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/home/node/.openclaw/config}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/home/node/.openclaw/cache}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-${OPENCLAW_STATE_DIR}/runtime}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-${OPENCLAW_STATE_DIR}/home/.local/share}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-${OPENCLAW_STATE_DIR}/state}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${OPENCLAW_STATE_DIR}/config}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${OPENCLAW_STATE_DIR}/cache}"
 
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR/keyring" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$HOME/.local/share/keyrings"
 chmod 700 "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR/keyring" "$XDG_DATA_HOME" "$HOME/.local/share/keyrings"
@@ -26,13 +28,15 @@ if command -v gnome-keyring-daemon >/dev/null 2>&1; then
   eval "$(gnome-keyring-daemon --start --components=secrets --control-directory="$XDG_RUNTIME_DIR/keyring" 2>/tmp/openclaw-gnome-keyring-start.err || true)"
   export GNOME_KEYRING_CONTROL="$XDG_RUNTIME_DIR/keyring"
   for _ in $(seq 1 50); do
-    if gdbus introspect --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets >/dev/null 2>&1; then
+    if command -v gdbus >/dev/null 2>&1 && gdbus introspect --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets >/dev/null 2>&1; then
       break
     fi
     sleep 0.1
   done
-  gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.CreateCollection "{'org.freedesktop.Secret.Collection.Label': <'login'>}" "login" >/dev/null 2>&1 || true
-  gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.SetAlias "login" "/org/freedesktop/secrets/collection/login" >/dev/null 2>&1 || true
+  if command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.CreateCollection "{'org.freedesktop.Secret.Collection.Label': <'login'>}" "login" >/dev/null 2>&1 || true
+    gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.SetAlias "login" "/org/freedesktop/secrets/collection/login" >/dev/null 2>&1 || true
+  fi
 fi
 
 exec "$@"

@@ -8,7 +8,8 @@ const target =
 const marker = 'OPENDD file-backed encryption key fallback enabled.';
 let source = fs.readFileSync(target, 'utf8');
 
-if (source.includes(marker)) {
+if (source.includes(marker) || source.includes('LARK_MCP_STORAGE_KEY') || source.includes('fallbackKeyFile')) {
+  console.log(`storage patch already present in ${target}`);
   process.exit(0);
 }
 

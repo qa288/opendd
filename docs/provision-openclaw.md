@@ -95,6 +95,19 @@ https://user03.example.com/callback
 The default event callback mode is Feishu long connection. The script does not
 require a public event callback URL for message receiving.
 
+## Feishu User Identity
+
+Feishu user identity is official OAuth with `user_access_token`. In this
+deployment, `lark-mcp` is the bridge that exposes those user-token OpenAPI calls
+to OpenClaw tools. The OpenClaw Feishu channel plugin remains responsible for
+robot messaging and long-connection events.
+
+Keep these responsibilities separate:
+
+- Feishu channel plugin: bot identity, message receive/send, pairing trigger.
+- `lark-mcp`: user OAuth, refresh token storage, user-token APIs.
+- Authorization card: bot-sent setup guide and OAuth launch button.
+
 ## Authorization Target Modes
 
 Recommended default:
@@ -129,6 +142,15 @@ configured and the user should receive a plain authorization card.
 In guided mode, the watcher uses a shorter default resend interval of 12
 minutes because the OAuth URL embedded in the card is short-lived. Override with
 `FEISHU_AUTH_CARD_COOLDOWN_MS` when needed.
+
+The watcher writes card-send output to:
+
+```text
+data/conf/logs/feishu-auth-card-watcher.log
+```
+
+It only enters normal cooldown after the card script reports `card_sent` or
+`setup_card_sent`. Failed sends are retried after a shorter failure interval.
 
 Manual mode:
 
@@ -211,13 +233,21 @@ check-openclaw-instance --name user03 --domain user03.example.com
 The checker reports:
 
 - Docker container status and health.
+- Shared Docker network attachment.
+- Auth-card script version.
+- `lark-mcp` storage fallback patch.
 - Recent model and Feishu WebSocket readiness log lines.
 - Generated `openclaw.json` domain/model/channel sanity.
+- Feishu user MCP public URL.
 - 1Panel agent and app install records.
 - 1Panel website record.
 - 1Panel certificate record and latest error message.
 - Public HTTP/HTTPS health probes.
 - Feishu user token storage status.
+
+Runtime scripts under `bin/` are the source of truth for the image. The matching
+files under `scripts/` are kept in sync only for server hot-patching and should
+not diverge.
 
 ## Data Isolation
 
