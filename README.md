@@ -159,6 +159,16 @@ bin/feishu-oauth-scopes.js
 The auth card, manual login helper, and MCP starter all use this helper. Do not
 edit scopes separately in multiple scripts.
 
+The default Feishu user MCP tool list is:
+
+```text
+LARK_MCP_TOOLS=preset.default,drive.v1.file.list
+```
+
+`drive.v1.file.list` is added outside the upstream default preset so tenants can
+list Feishu Drive folders with user identity after OAuth. Folder listing needs a
+folder token or folder link; fuzzy folder-name search is a separate lookup step.
+
 ## Backup
 
 For a clean backup, stop the container first:

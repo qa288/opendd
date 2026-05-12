@@ -238,6 +238,7 @@ FEISHU_DM_POLICY=pairing
 FEISHU_GROUP_POLICY=open
 FEISHU_GROUP_OWNER_ONLY=1
 LARK_MCP_PUBLIC_URL=https://<domain>
+LARK_MCP_TOOLS=preset.default,drive.v1.file.list
 OPENCLAW_PUBLIC_URL=https://<domain>
 ```
 
@@ -258,6 +259,11 @@ https://<domain>/callback
 
 OAuth scope 已收口到 `bin/feishu-oauth-scopes.js`。授权卡、手动登录脚本和
 `feishu-user` MCP 启动脚本都从这里读取默认 scope，避免后续权限调整时多处漂移。
+
+默认 MCP 工具集显式追加 `drive.v1.file.list`，因为 `preset.default` 没有暴露
+云空间文件夹列目录工具。部署后深度检查里的 `feishu user MCP drive tools`
+应为 OK。该工具支持用户身份，但需要具体 folder token 或文件夹链接；只给模糊
+文件夹名称时，应先搜索文档或让用户补充链接。
 
 推荐的授权目标模式是 `first_sender`。在这个模式下，运维不需要提前知道用户的 `open_id` 或授权目标 `chat_id`。用户只要先私聊机器人，或在群里 @ 机器人，OpenClaw 飞书插件会写入 `feishu-pairing.json`，镜像内的 `feishu-pairing-auth-watcher.js` 会读取第一个用户并自动发送引导式 OAuth 授权卡片。
 
@@ -308,6 +314,7 @@ https://<domain>/callback
 
 - 知识库。
 - 文档。
+- 云空间文件夹。
 - 多维表格。
 - 群聊列表。
 - 群成员。
@@ -424,6 +431,7 @@ provision-openclaw --interactive --direct
 - 私聊回复。
 - 群聊被 @ 后回复。
 - 用户身份读取知识库和文档。
+- 用户身份列出云空间文件夹内容。
 - 用户身份读取群聊列表和群成员。
 - 授权失败时可重新推送授权卡片。
 - 定时 keepalive 检测用户授权。
@@ -586,6 +594,7 @@ provision-openclaw --interactive --direct
 - [ ] 用户 open_id 已写入 allowlist。
 - [ ] 用户已点击授权卡片。
 - [ ] `im_v1_chat_list useUAT=true` 测试成功。
+- [ ] `feishu user MCP drive tools` 深度检查为 OK。
 - [ ] 知识库读取测试成功。
 - [ ] 记忆功能开启。
 - [ ] 向量配置正确。

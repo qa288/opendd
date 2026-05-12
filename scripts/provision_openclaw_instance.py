@@ -193,6 +193,7 @@ networks:
       OPENCLAW_EMBEDDING_API_KEY: ${{OPENCLAW_EMBEDDING_API_KEY:-}}
       OPENCLAW_EMBEDDING_MODEL: ${{OPENCLAW_EMBEDDING_MODEL:-text-embedding-v4}}
       OPENCLAW_EMBEDDING_BASE_URL: ${{OPENCLAW_EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}}
+      LARK_MCP_TOOLS: ${{LARK_MCP_TOOLS:-preset.default,drive.v1.file.list}}
       LARK_MCP_LOGIN_HOST: 0.0.0.0
       LARK_MCP_LOGIN_PORT: "{CONTAINER_OAUTH_PORT}"
     volumes:
@@ -355,6 +356,7 @@ def create_instance_files(args: argparse.Namespace) -> Tuple[Path, str, int, int
             "OPENCLAW_EMBEDDING_API_KEY": args.embedding_api_key or env.get("OPENCLAW_EMBEDDING_API_KEY", ""),
             "OPENCLAW_EMBEDDING_MODEL": args.embedding_model or env.get("OPENCLAW_EMBEDDING_MODEL", "text-embedding-v4"),
             "OPENCLAW_EMBEDDING_BASE_URL": args.embedding_base_url or env.get("OPENCLAW_EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            "LARK_MCP_TOOLS": env.get("LARK_MCP_TOOLS", "preset.default,drive.v1.file.list"),
             "FEISHU_ENABLED": "true",
             "FEISHU_DOMAIN": "feishu",
             "FEISHU_APP_ID": args.feishu_app_id,

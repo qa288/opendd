@@ -32,7 +32,7 @@ if (!appId || !appSecret || typeof appSecret !== 'string') {
 
 const wrap = '/opt/opendd/bin/with-keyring.sh';
 const bin = '/opt/opendd/lark-openapi/node_modules/.bin/lark-mcp';
-const tools = process.env.LARK_MCP_TOOLS || 'preset.default';
+const tools = process.env.LARK_MCP_TOOLS || 'preset.default,drive.v1.file.list';
 const language = process.env.LARK_MCP_LANGUAGE || 'zh';
 const host = process.env.LARK_MCP_HOST || '0.0.0.0';
 const port = process.env.LARK_MCP_PORT || process.env.LARK_MCP_LOGIN_PORT || '31888';

@@ -108,6 +108,18 @@ Keep these responsibilities separate:
 - `lark-mcp`: user OAuth, refresh token storage, user-token APIs.
 - Authorization card: bot-sent setup guide and OAuth launch button.
 
+The default MCP tool list is:
+
+```text
+LARK_MCP_TOOLS=preset.default,drive.v1.file.list
+```
+
+`drive.v1.file.list` is appended because the upstream default preset does not
+expose folder listing. Without it, the model can incorrectly conclude that
+Drive folders are unavailable through user identity. Folder listing still needs
+a concrete folder token or folder link; fuzzy folder-name search should be
+handled separately with document search or by asking for the link.
+
 ## Authorization Target Modes
 
 Recommended default:
@@ -241,6 +253,7 @@ The checker reports:
 - Recent model and Feishu WebSocket readiness log lines.
 - Generated `openclaw.json` domain/model/channel sanity.
 - Feishu user MCP public URL.
+- Feishu user MCP tool list and a dedicated `drive_v1_file_list` deep-mode check.
 - 1Panel agent and app install records.
 - 1Panel website record.
 - 1Panel certificate record and latest error message.

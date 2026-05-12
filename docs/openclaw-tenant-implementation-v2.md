@@ -107,13 +107,23 @@ openclaw-net
 当前飞书接入分两层：
 
 - OpenClaw 飞书 channel：机器人身份，负责长连接、私聊、群聊、回复和卡片。
-- `lark-mcp` 用户身份桥接：飞书官方 OAuth `user_access_token`，负责按用户权限访问知识库、文档、多维表格、群聊列表、群成员等工具。
+- `lark-mcp` 用户身份桥接：飞书官方 OAuth `user_access_token`，负责按用户权限访问知识库、文档、云空间文件夹、多维表格、群聊列表、群成员等工具。
 
 授权卡片只是机器人发送的引导入口，不是新的身份体系。
 
 注意：当前 `lark-mcp 0.5.1` 里 `im.v1.message.list` 仍是 tenant token 工具，
 不是 user token 工具。也就是说，用户身份 MCP 能列群聊和群成员，但不能直接按
 用户身份拉完整私聊/群聊历史。需要读取历史消息时，应单独设计 tenant/app 权限链路。
+
+当前默认 MCP 工具集是：
+
+```text
+LARK_MCP_TOOLS=preset.default,drive.v1.file.list
+```
+
+`preset.default` 已包含常用 wiki、docx、bitable、IM 工具，但不包含
+`drive.v1.file.list`。因此必须显式追加它，才能让模型用
+`drive_v1_file_list` 按用户身份列出云空间文件夹内容。
 
 ## 4. 部署前准备
 
@@ -130,6 +140,10 @@ openclaw-net
 ```text
 https://<domain>/callback
 ```
+
+如果要读取云空间文件夹，最好让用户提供文件夹链接或 folder token。自然语言按文件夹
+名称搜索不一定能直接定位到 Drive 目录；定位到目录后再用 `drive_v1_file_list`
+列目录更稳定。
 
 1Panel 侧需要准备：
 
@@ -289,6 +303,7 @@ check-openclaw-instance --name m2 --domain m2.op.tyos.cc --deep
 - lark-mcp OAuth public URL patch 是否生效。
 - 飞书 OAuth scope helper 是否存在，确保授权卡和 MCP 启动使用同一组 scope。
 - `--deep` 模式会真实启动 `feishu-user` MCP 并执行 `tools/list` 握手。
+- `--deep` 输出中 `feishu user MCP drive tools` 应为 OK，说明云空间文件夹用户身份工具已暴露。
 - 近期日志是否有 `agent model`。
 - 飞书 WebSocket 是否 `ws client ready`。
 - `allowedOrigins` 是否只包含当前域名和 localhost。
@@ -355,6 +370,10 @@ OK   public https - HTTP/2 200
 模型查询飞书知识库、云文档、多维表格时，应优先使用 `feishu-user` MCP 工具。
 如果日志里出现 `token_type=tenant` 的 wiki/doc/drive 权限错误，通常说明模型调用了
 频道插件暴露的 app 身份工具，或 `feishu-user` MCP 没有正常启动。
+
+云空间文件夹列目录应使用 `drive_v1_file_list`。这个工具支持用户身份调用，但需要
+目标文件夹的 token 或可解析的文件夹链接。它不是全文搜索工具；如果只给一个模糊的
+文件夹名称，模型可能仍需要先用文档搜索工具定位具体文件或让用户补充文件夹链接。
 
 `lark-mcp 0.5.1` 的 `im.v1.message.list` 工具定义仍是 `tenant` access token，
 在 `user_access_token` 模式下不会作为用户身份消息历史工具暴露。用户身份能列群聊和
@@ -485,6 +504,22 @@ data/conf/home/.local/share/lark-mcp-nodejs/storage.json
 
 这两个文件都在用户实例目录里，跟随 `data/` 一起备份和迁移。旧容器需要更新镜像
 并重建，或临时执行同样的 patch。
+
+### 7.7 模型说 Drive 文件夹不支持用户身份
+
+先跑深度检查：
+
+```bash
+check-openclaw-instance --name m2 --domain m2.op.tyos.cc --deep
+```
+
+如果 `feishu user MCP tools` 不是 `preset.default,drive.v1.file.list`，或深度输出中
+`feishu user MCP drive tools` 不是 OK，说明实例仍在使用旧 MCP 工具集。更新 `.env`
+和 `openclaw.json` 后重启容器。
+
+如果 `drive_v1_file_list` 已存在，但模型仍说不支持用户身份，通常是模型调用错了
+工具，或用户只给了模糊文件夹名称。此时让用户提供文件夹链接或 folder token，再用
+`drive_v1_file_list` 列目录。
 
 ## 8. 后续优化
 

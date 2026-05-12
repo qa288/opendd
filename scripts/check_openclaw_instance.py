@@ -138,7 +138,7 @@ def check_config(instance_dir: Path, domain: str) -> None:
         status("feishu user MCP public URL", "FAIL", f"{public_url} expected={expected_public}")
     else:
         status("feishu user MCP public URL", "WARN", "missing")
-    tools = str(mcp_env.get("LARK_MCP_TOOLS") or "preset.default")
+    tools = str(mcp_env.get("LARK_MCP_TOOLS") or "preset.default,drive.v1.file.list")
     status("feishu user MCP tools", "OK" if tools else "WARN", tools)
 
 
@@ -261,8 +261,13 @@ def check_feishu_user_mcp_handshake(container_name: str) -> None:
         return
 
     names = re.findall(r'"name":"([^"]+)"', output)
-    interesting = [name for name in names if name.startswith(("wiki_", "docx_", "im_", "bitable_"))]
+    interesting = [name for name in names if name.startswith(("wiki_", "docx_", "im_", "bitable_", "drive_"))]
     status("feishu user MCP handshake", "OK", ", ".join(interesting[:8]) or f"{len(names)} tools")
+    drive_names = [name for name in names if name.startswith("drive_")]
+    if drive_names:
+        status("feishu user MCP drive tools", "OK", ", ".join(drive_names[:5]))
+    else:
+        status("feishu user MCP drive tools", "WARN", "drive_v1_file_list missing from tools/list")
 
 
 def resolve_container_name(

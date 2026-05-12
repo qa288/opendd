@@ -12,6 +12,7 @@ const modelProvider = process.env.OPENCLAW_MODEL_PROVIDER || 'bailian-coding-pla
 const modelId = process.env.OPENCLAW_MODEL_ID || 'qwen3.6-plus';
 const modelApiKey = process.env.OPENCLAW_MODEL_API_KEY || process.env.BAILIAN_CODING_API_KEY || '';
 const modelBaseUrl = process.env.OPENCLAW_MODEL_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1';
+const larkMcpTools = process.env.LARK_MCP_TOOLS || 'preset.default,drive.v1.file.list';
 const embeddingProvider = process.env.OPENCLAW_EMBEDDING_PROVIDER || 'openai';
 const embeddingModel = process.env.OPENCLAW_EMBEDDING_MODEL || 'text-embedding-v4';
 const embeddingBaseUrl = process.env.OPENCLAW_EMBEDDING_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -165,7 +166,7 @@ const config = {
           XDG_CACHE_HOME: '/home/node/.openclaw/cache',
           LARK_MCP_PUBLIC_URL: publicUrl,
           LARK_MCP_LANGUAGE: 'zh',
-          LARK_MCP_TOOLS: process.env.LARK_MCP_TOOLS || 'preset.default',
+          LARK_MCP_TOOLS: larkMcpTools,
         },
       },
     },
